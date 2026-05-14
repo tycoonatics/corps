@@ -61,17 +61,14 @@ def load_mapped_data():
         
         sh = gc.open_by_url(s["spreadsheet"])
         
-        # Load Reference Data (Pulling Status from here)
         ref_df = pd.DataFrame(sh.worksheet("Reference_Data").get_all_records())
         player_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Display_Name'].to_dict()
         status_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Status'].to_dict()
         corp_map = ref_df[ref_df['ID_Type'] == 'Corp'].set_index('ID_Value')['Display_Name'].to_dict()
         
-        # Load Stats
         raw_stats_ws = sh.worksheet("Corporation_Stats")
         stats_df = pd.DataFrame(raw_stats_ws.get_all_records())
         
-        # Date and Mapping
         stats_df['Date'] = pd.to_datetime(stats_df['Date'], format='mixed', dayfirst=False)
         stats_df['Player Name'] = stats_df['UID'].map(player_map).fillna(stats_df['UID'])
         stats_df['Corp Name'] = stats_df['Corp_ID'].map(corp_map).fillna(stats_df['Corp_ID'])
@@ -96,7 +93,6 @@ if not df.empty:
     
     corp_df = df[df['Corp Name'] == selected_corp_name].sort_values('Date', ascending=False)
     
-    # Filter view based on Status in Reference sheet
     if show_active_only:
         view_df = corp_df[corp_df['Status'].str.contains("Active", case=False, na=False)]
     else:
@@ -121,9 +117,9 @@ if not df.empty:
         st.dataframe(
             latest_df[['Status', 'Player Name', 'Lvl', 'CV', 'DC']], 
             column_config={
-                "Lvl": st.column_config.NumberColumn("Lvl", format=",d"),
-                "CV": st.column_config.NumberColumn("CV (M)", format=",d"),
-                "DC": st.column_config.NumberColumn("Donations", format=",d"),
+                "Lvl": st.column_config.NumberColumn("Lvl", format="%d"),
+                "CV": st.column_config.NumberColumn("CV (M)", format="%d"),
+                "DC": st.column_config.NumberColumn("Donations", format="%d"),
             },
             hide_index=True, 
             use_container_width=True
@@ -136,15 +132,15 @@ if not df.empty:
         
         h1.subheader("🏆 Peak Level")
         h1.dataframe(view_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False).reset_index(), 
-                     column_config={"Lvl": st.column_config.NumberColumn(format=",d")}, hide_index=True, use_container_width=True)
+                     column_config={"Lvl": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
         
         h2.subheader("💰 Peak CV")
         h2.dataframe(view_df.groupby('Player Name')['CV'].max().sort_values(ascending=False).reset_index(), 
-                     column_config={"CV": st.column_config.NumberColumn(format=",d")}, hide_index=True, use_container_width=True)
+                     column_config={"CV": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
         
         h3.subheader("💫 Lifetime DC")
         h3.dataframe(view_df.groupby('Player Name')['DC'].sum().sort_values(ascending=False).reset_index(), 
-                     column_config={"DC": st.column_config.NumberColumn(format=",d")}, hide_index=True, use_container_width=True)
+                     column_config={"DC": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
 
     # --- TAB 3: STREAKS ---
     with tab_streaks:
@@ -161,7 +157,7 @@ if not df.empty:
             streak_data.append({"Status": p_logs['Status'].iloc[0], "Player Name": p_logs['Player Name'].iloc[0], "Weeks Active": count})
         
         st.dataframe(pd.DataFrame(streak_data).sort_values("Weeks Active", ascending=False), 
-                     column_config={"Weeks Active": st.column_config.NumberColumn(format="🔥 ,d")},
+                     column_config={"Weeks Active": st.column_config.NumberColumn(format="🔥 %d")},
                      hide_index=True, use_container_width=True)
 
     # --- TAB 4: MEMBER PROFILES ---
@@ -173,8 +169,8 @@ if not df.empty:
         
         p_col1, p_col2 = st.columns([1, 2])
         p_col1.metric("Status", p_history['Status'].iloc[0])
-        p_col1.metric("Peak Lvl", f"{p_history['Lvl'].max():,d}")
-        p_col1.metric("Lifetime DC", f"{p_history['DC'].sum():,.0f}")
+        p_col1.metric("Peak Lvl", f"{int(p_history['Lvl'].max()):,}")
+        p_col1.metric("Lifetime DC", f"{int(p_history['DC'].sum()):,}")
         p_col2.plotly_chart(px.line(p_history, x='Date', y='CV', title='CV Progression Over Time', markers=True), use_container_width=True)
 
     # --- TAB 5: ADMIN ENTRY ---
@@ -199,4 +195,4 @@ if not df.empty:
                     st.rerun()
 
 else:
-    st.info("Hub ready. Please ensure your 'Reference_Data' (including a 'Status' column) and 'Corporation_Stats' are populated.")
+    st.info("Hub ready. Please ensure your 'Reference_Data' and 'Corporation_Stats' are populated.")
