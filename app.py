@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date
 import gspread
 from google.oauth2.service_account import Credentials
 import base64
@@ -59,27 +59,21 @@ def load_mapped_data():
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         gc = gspread.authorize(creds)
         
-        # Opens using the URL provided in your secrets
+        # Uses the URL from your secrets for stability
         sh = gc.open_by_url(s["spreadsheet"])
         
-        # Load Reference Data (Mapping IDs to Names)
         ref_df = pd.DataFrame(sh.worksheet("Reference_Data").get_all_records())
         player_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Display_Name'].to_dict()
         corp_map = ref_df[ref_df['ID_Type'] == 'Corp'].set_index('ID_Value')['Display_Name'].to_dict()
         
-        # Load Stats Data
         raw_stats_ws = sh.worksheet("Corporation_Stats")
         stats_df = pd.DataFrame(raw_stats_ws.get_all_records())
         
-        # --- ROBUST DATE FIX ---
-        # Uses 'mixed' format to handle '6/2/25' or '2025-06-02' automatically
+        # Fixed: Robust date parsing
         stats_df['Date'] = pd.to_datetime(stats_df['Date'], format='mixed', dayfirst=False)
-        
-        # Apply Mapping
         stats_df['Player Name'] = stats_df['UID'].map(player_map).fillna(stats_df['UID'])
         stats_df['Corp Name'] = stats_df['Corp_ID'].map(corp_map).fillna(stats_df['Corp_ID'])
         
-        # Clean Numeric Columns
         for col in ['Lvl', 'CV', 'DC']:
             stats_df[col] = pd.to_numeric(stats_df[col], errors='coerce').fillna(0)
             
@@ -106,24 +100,43 @@ if not df.empty:
 
     # --- TAB 1: OVERVIEW ---
     with tab_overview:
-        st.markdown(f'<div class="section-header">📈 {selected_corp_name} Stats (As of {latest_date.date()})</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-header">📈 {selected_corp_name} Stats ({latest_date.date()})</div>', unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Roster", f"{len(latest_df)} Members")
+        m1.metric("Roster", f"{len(latest_df)}/20")
         m2.metric("Avg Level", f"{latest_df['Lvl'].mean():.1f}")
         m3.metric("Total Value", f"${latest_df['CV'].sum():,.0f}M")
         m4.metric("Total Donations", f"{latest_df['DC'].sum():,.0f}")
-        st.dataframe(latest_df[['Player Name', 'Lvl', 'CV', 'DC']], hide_index=True, use_container_width=True)
+        
+        # Dataframe with thousands separators
+        st.dataframe(
+            latest_df[['Player Name', 'Lvl', 'CV', 'DC']], 
+            column_config={
+                "CV": st.column_config.NumberColumn("CV (M)", format="%d"),
+                "DC": st.column_config.NumberColumn("Donations", format="%d"),
+            },
+            hide_index=True, 
+            use_container_width=True
+        )
 
-    # --- TAB 2: LEADERBOARDS ---
+    # --- TAB 2: HALL OF FAME ---
     with tab_leaderboards:
         st.markdown('<div class="section-header">👑 Hall of Fame: All-Time Bests</div>', unsafe_allow_html=True)
         h1, h2, h3 = st.columns(3)
+        
+        # Peak Lvl
         h1.subheader("🏆 Peak Level")
-        h1.dataframe(corp_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False), use_container_width=True)
+        lvl_data = corp_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False).reset_index()
+        h1.dataframe(lvl_data, hide_index=True, use_container_width=True)
+        
+        # Peak CV
         h2.subheader("💰 Peak CV")
-        h2.dataframe(corp_df.groupby('Player Name')['CV'].max().sort_values(ascending=False), use_container_width=True)
+        cv_data = corp_df.groupby('Player Name')['CV'].max().sort_values(ascending=False).reset_index()
+        h2.dataframe(cv_data, column_config={"CV": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
+        
+        # Lifetime DC
         h3.subheader("💫 Lifetime DC")
-        h3.dataframe(corp_df.groupby('Player Name')['DC'].sum().sort_values(ascending=False), use_container_width=True)
+        dc_data = corp_df.groupby('Player Name')['DC'].sum().sort_values(ascending=False).reset_index()
+        h3.dataframe(dc_data, column_config={"DC": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
 
     # --- TAB 3: STREAKS ---
     with tab_streaks:
@@ -131,24 +144,18 @@ if not df.empty:
         streak_data = []
         distinct_weeks = sorted(corp_df['Date'].unique(), reverse=True)
         for uid in corp_df['UID'].unique():
-            p_logs = corp_df[corp_df['UID'] == uid]
-            p_name = p_logs['Player Name'].iloc[0]
+            p_logs = corp_df[corp_df['UID'] == uid]; p_name = p_logs['Player Name'].iloc[0]
             logged_dates = set(p_logs['Date'])
-            
-            # Activity Streak
             act_streak = 0
             for w in distinct_weeks:
                 if w in logged_dates: act_streak += 1
                 else: break
-            
-            # Donation Streak (DC > 0)
             don_streak = 0
             for w in distinct_weeks:
                 if w in logged_dates:
                     if p_logs[p_logs['Date'] == w]['DC'].values[0] > 0: don_streak += 1
                     else: break
                 else: break
-            
             streak_data.append({"Player Name": p_name, "Activity Streak": act_streak, "Donation Streak": don_streak})
         
         st.dataframe(
@@ -161,7 +168,7 @@ if not df.empty:
             use_container_width=True
         )
 
-    # --- TAB 4: PROFILES ---
+    # --- TAB 4: MEMBER PROFILES ---
     with tab_profiles:
         st.markdown('<div class="section-header">👤 Individual Member Tracker</div>', unsafe_allow_html=True)
         sel_player = st.selectbox("Select Member:", sorted(corp_df['Player Name'].unique()))
@@ -175,9 +182,9 @@ if not df.empty:
     with tab_admin:
         st.markdown('<div class="section-header">🔑 Administration Access</div>', unsafe_allow_html=True)
         admin_key_input = st.text_input("Enter Admin Password to Unlock Form:", type="password")
+        correct_password = st.secrets.get("admin_password", "rcttaddict")
         
-        # Validates against secret 'admin_password'
-        if admin_key_input == st.secrets.get("admin_password", "rcttaddict"):
+        if admin_key_input == correct_password:
             st.success("Access Granted.")
             with st.form("admin_form", clear_on_submit=True):
                 f1, f2 = st.columns(2)
@@ -188,7 +195,7 @@ if not df.empty:
                 in_cid = f2.text_input("Corp ID", value=latest_df['Corp_ID'].iloc[0] if not latest_df.empty else "CORP_001")
                 in_lvl = f2.number_input("Lvl", 1, 999, 50)
                 in_cv = f1.number_input("CV (M)", 0, 1000000, 100)
-                in_dc = f2.number_input("DC", 0, 100000, 0)
+                in_dc = f2.number_input("DC", 0, 1000000, 0)
                 
                 if st.form_submit_button("Commit Data"):
                     if in_uid and in_cid:
@@ -197,9 +204,9 @@ if not df.empty:
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("Please provide both UID and Corp ID.")
+                        st.error("Missing UID or Corp ID.")
         elif admin_key_input != "":
             st.error("Invalid Password. Access Denied.")
 
 else:
-    st.info("Hub ready. Please ensure your 'Reference_Data' and 'Corporation_Stats' sheets are correctly populated.")
+    st.info("Hub ready. Please ensure your 'Reference_Data' and 'Corporation_Stats' sheets are populated.")
