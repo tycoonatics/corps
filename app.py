@@ -34,14 +34,14 @@ def load_data():
         # Pull secrets from Streamlit
         s = st.secrets["connections"]["gsheets"]
         
-        # FIX: Convert the string literal \n into actual newline bytes for Google
-        clean_key = s["private_key"].replace("\\n", "\n")
-        
+        # CHANGE MADE HERE: 
+        # We no longer use .replace("\\n", "\n") because the triple quotes 
+        # in your Secrets dashboard handle the newlines naturally.
         creds_info = {
             "type": s["type"],
             "project_id": s["project_id"],
             "private_key_id": s["private_key_id"],
-            "private_key": clean_key,
+            "private_key": s["private_key"], 
             "client_email": s["client_email"],
             "client_id": s["client_id"],
             "auth_uri": s["auth_uri"],
