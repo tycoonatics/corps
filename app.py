@@ -9,7 +9,7 @@ from datetime import date
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="RCTT Corporation Hub", page_icon="🏆", layout="wide")
 
-# --- 2. VIBRANT CUSTOM STYLING (Celebration Corner Aesthetic) ---
+# --- 2. CUSTOM UI STYLING (Knowledge Hub Aesthetic) ---
 st.markdown("""
     <style>
     .main-header {
@@ -24,33 +24,26 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     }
     div[data-testid="stMetric"] {
-        background-color: #ffffff;
-        border-left: 5px solid #ff0080;
+        background-color: #f0f2f6;
+        border: 1px solid #d1d5db;
         padding: 15px;
         border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
-    .section-banner {
-        background-color: #1e293b;
-        color: #00f2ff;
-        padding: 10px 20px;
-        border-radius: 8px;
+    .section-header {
+        font-size: 1.5rem;
         font-weight: bold;
-        margin-top: 30px;
-        margin-bottom: 15px;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-    }
-    .stDataFrame {
-        border-radius: 10px;
-        overflow: hidden;
+        color: #1e293b;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #ff0080;
+        padding-bottom: 5px;
     }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">🏆 RCTT KNOWLEDGE HUB 🏆</div>', unsafe_allow_html=True)
 
-# --- 3. DATABASE CONNECTION ---
+# --- 3. DATABASE CONNECTION (Base64 Security) ---
 @st.cache_data(ttl=60)
 def load_data():
     try:
@@ -71,68 +64,74 @@ def load_data():
         st.error(f"❌ Connection Failed: {e}")
         return pd.DataFrame(), None
 
-# --- 4. DATA PROCESSING & DASHBOARD ---
+# --- 4. DATA PROCESSING ---
 df, worksheet = load_data()
 
 if not df.empty:
-    # Data Normalization
+    # Ensure proper data types exactly like offline version
     df['Date'] = pd.to_datetime(df['Date'])
     df['Company Value'] = pd.to_numeric(df['Company Value'], errors='coerce').fillna(0)
     df['Donation Count'] = pd.to_numeric(df['Donation Count'], errors='coerce').fillna(0)
     df['Player Level'] = pd.to_numeric(df['Player Level'], errors='coerce').fillna(1)
 
-    # Sidebar Navigation
-    st.sidebar.markdown("### 🎮 GAME CENTER")
+    # --- 5. SIDEBAR (STAYS THE SAME) ---
+    st.sidebar.header("Navigation")
     corps = sorted(df['Corp Name'].unique())
-    selected_corp = st.sidebar.selectbox("Select Corporation", corps)
+    selected_corp = st.sidebar.selectbox("Choose Corporation", corps)
     
+    # Filter for selected corp and most recent update date
     corp_data = df[df['Corp Name'] == selected_corp]
     latest_date = corp_data['Date'].max()
     latest_stats = corp_data[corp_data['Date'] == latest_date]
 
-    # --- TOP METRICS ---
-    st.markdown(f'<div class="section-banner">📊 {selected_corp} LIVE STATS</div>', unsafe_allow_html=True)
+    # --- 6. TOP LEVEL METRICS (Offline Version Layout) ---
+    st.markdown(f'<div class="section-header">📈 {selected_corp} Overview (As of {latest_date.date()})</div>', unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Active Members", len(latest_stats))
-    m2.metric("Corp Net Worth", f"${latest_stats['Company Value'].sum():,.0f}M")
-    m3.metric("Weekly Donations", f"{latest_stats['Donation Count'].sum():,.0f}")
-    m4.metric("Avg Player Level", f"{latest_stats['Player Level'].mean():.1f}")
+    m1.metric("Total Members", len(latest_stats))
+    m2.metric("Total Net Worth", f"${latest_stats['Company Value'].sum():,.0f}M")
+    m3.metric("Total Donations", f"{latest_stats['Donation Count'].sum():,.0f}")
+    avg_lvl = latest_stats['Player Level'].mean()
+    m4.metric("Average Level", f"{avg_lvl:.1f}")
 
-    # --- LEADERBOARDS (Celebration Corner View) ---
-    st.markdown('<div class="section-banner">🌟 TOP PERFORMERS 🌟</div>', unsafe_allow_html=True)
-    col_l, col_r = st.columns(2)
+    # --- 7. LEADERBOARDS (Offline Version Layout) ---
+    st.divider()
+    col_left, col_right = st.columns(2)
 
-    with col_l:
-        st.write("### 💰 Value Leaders")
+    with col_left:
+        st.write("### 💰 Top Company Value")
         top_val = latest_stats[['Player Name', 'Company Value']].sort_values(by='Company Value', ascending=False).head(10)
         st.dataframe(top_val, use_container_width=True, hide_index=True)
 
-    with col_r:
-        st.write("### 🟢 Donation Kings")
+    with col_right:
+        st.write("### 🟢 Top Donators")
         top_don = latest_stats[['Player Name', 'Donation Count']].sort_values(by='Donation Count', ascending=False).head(10)
         st.dataframe(top_don, use_container_width=True, hide_index=True)
 
-    # --- ADMIN ENTRY (Teddies Challenge / MPG Style) ---
-    st.markdown('<div class="section-banner">🛠️ ADMIN: LOG PLAYER PROGRESS</div>', unsafe_allow_html=True)
-    with st.expander("Click to Open Admin Console"):
+    # --- 8. ADMIN ENTRY FORM (Offline Version Functionality) ---
+    st.divider()
+    with st.expander("🛠️ Admin: Add/Update Member Stats"):
         with st.form("admin_form", clear_on_submit=True):
+            st.write("Submit stats for a player. This will add a new row to the database.")
             c1, c2, c3 = st.columns(3)
-            f_date = c1.date_input("Log Date", date.today())
-            f_corp = c1.selectbox("Corp", corps)
+            f_date = c1.date_input("Report Date", date.today())
+            f_corp = c1.selectbox("Corporation", corps)
             f_name = c2.text_input("Player Name")
-            f_lvl = c2.number_input("Level", 1, 999, 50)
-            f_val = c3.number_input("Value (M)", 0, 1000000, 100)
-            f_don = c3.number_input("Donations", 0, 100000, 0)
+            f_lvl = c2.number_input("Player Level", 1, 999, 50)
+            f_val = c3.number_input("Company Value (Millions)", 0, 1000000, 100)
+            f_don = c3.number_input("Donation Count", 0, 100000, 0)
             
-            if st.form_submit_button("SAVE TO CLOUD"):
+            if st.form_submit_button("Submit Stats to Google Sheets"):
                 if f_name:
-                    new_row = [str(f_date), f_corp, f_name, f_lvl, f_val, f_don]
-                    worksheet.append_row(new_row)
-                    st.success(f"Successfully logged {f_name}!")
-                    st.cache_data.clear()
-                    st.rerun()
+                    try:
+                        new_row = [str(f_date), f_corp, f_name, f_lvl, f_val, f_don]
+                        worksheet.append_row(new_row)
+                        st.success(f"Successfully logged stats for {f_name}!")
+                        st.cache_data.clear() # Forces app to reload fresh data
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error submitting data: {e}")
                 else:
-                    st.warning("Player Name is required.")
+                    st.warning("Please enter a player name before submitting.")
 
 else:
-    st.warning("⚠️ No data found. Please ensure your Spreadsheet is correctly shared.")
+    st.warning("⚠️ No data found. Please check your 'Secrets' configuration and ensure the Spreadsheet has data in 'Corporation_Stats'.")
