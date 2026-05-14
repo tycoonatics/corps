@@ -29,21 +29,32 @@ st.markdown("""
 
 st.title("🏆 RCTT Corporation Hub Network")
 
-# 1. Connect to Google Sheets with Private Key Fix
+# 1. Robust Google Sheets Connection
 @st.cache_data(ttl=5)
 def load_data_from_sheets():
     try:
-        # Load credentials from Streamlit Secrets
-        creds_info = dict(st.secrets["connections"]["gsheets"])
+        # Load credentials and force them into a clean dictionary
+        creds_info = {
+            "type": st.secrets["connections"]["gsheets"]["type"],
+            "project_id": st.secrets["connections"]["gsheets"]["project_id"],
+            "private_key_id": st.secrets["connections"]["gsheets"]["private_key_id"],
+            "private_key": st.secrets["connections"]["gsheets"]["private_key"],
+            "client_email": st.secrets["connections"]["gsheets"]["client_email"],
+            "client_id": st.secrets["connections"]["gsheets"]["client_id"],
+            "auth_uri": st.secrets["connections"]["gsheets"]["auth_uri"],
+            "token_uri": st.secrets["connections"]["gsheets"]["token_uri"],
+            "auth_provider_x509_cert_url": st.secrets["connections"]["gsheets"]["auth_provider_x509_cert_url"],
+            "client_x509_cert_url": st.secrets["connections"]["gsheets"]["client_x509_cert_url"]
+        }
         
-        # FIX: Replace escaped newlines to prevent Padding/PEM errors
-        if "private_key" in creds_info:
-            creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        # CLEANUP: Fix padding and PEM formatting errors
+        # This replaces literal "\n" strings with actual newlines and strips trailing whitespace
+        creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n").strip()
         
-        sheet_url = creds_info["spreadsheet"]
+        sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
         
         # Authenticate
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
         client = gspread.authorize(creds)
         
