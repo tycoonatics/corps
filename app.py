@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
+import gspread
+from google.oauth2.service_account import Credentials
 
 # Set up widescreen page layout
 st.set_page_config(page_title="RCTT Corporation Hub", page_icon="🏆", layout="wide")
@@ -27,21 +29,40 @@ st.markdown("""
 
 st.title("🏆 RCTT Corporation Hub Network")
 
-# 1. Connect to Google Sheets using Streamlit's native cloud connection API
-try:
-    # This reads your cloud secrets.toml box automatically
-    conn = st.connection("gsheets", type="spreadsheet")
-    df = conn.read(worksheet="Corporation_Stats", ttl="5s")
+# 1. Connect to Google Sheets using direct vanilla API authentication
+@st.cache_data(ttl=5)
+def load_data_from_sheets():
+    try:
+        # Extract the credentials dictionary directly from secrets
+        creds_dict = dict(st.secrets["connections"]["gsheets"])
+        sheet_url = creds_dict["spreadsheet"]
+        
+        # Authenticate securely with Google APIs
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+        
+        # Open workbook and fetch rows
+        workbook = client.open_by_url(sheet_url)
+        worksheet = workbook.worksheet("Corporation_Stats")
+        records = worksheet.get_all_records()
+        
+        # Convert to DataFrame
+        raw_df = pd.DataFrame(records)
+        return raw_df, worksheet, sheet_url
+    except Exception as e:
+        st.error(f"API Authentication Failed: {e}")
+        return pd.DataFrame(), None, None
+
+# Load dataset
+df, target_worksheet, active_sheet_url = load_data_from_sheets()
+
+if not df.empty:
     df['Date'] = pd.to_datetime(df['Date'])
-    
     df['Player Level'] = pd.to_numeric(df['Player Level'], errors='coerce').fillna(0).astype(int)
     df['Company Value'] = pd.to_numeric(df['Company Value'], errors='coerce').fillna(0).astype(int)
     df['Donation Count'] = pd.to_numeric(df['Donation Count'], errors='coerce').fillna(0).astype(int)
-except Exception as e:
-    st.error("Could not connect to Google Sheets. Verify your configuration secrets.")
-    df = pd.DataFrame(columns=["Date", "Corp Name", "Player Name", "Player Level", "Company Value", "Donation Count"])
 
-if not df.empty:
     # Main Dropdown Selector
     available_corps = sorted(df['Corp Name'].unique())
     selected_corp = st.selectbox("Choose Active Corporation:", available_corps)
@@ -233,31 +254,37 @@ if not df.empty:
         # ROW 7: ENTRY FORM PANEL (Admin Tool)
         # ==========================================
         st.markdown('<div class="section-header">🔑 Corporation Administration Log Panel</div>', unsafe_allow_html=True)
-        with st.form("data_entry_form", clear_on_submit=True):
-            f_col1, f_col2, f_col3 = st.columns(3)
-            input_date = f_col1.date_input("Log Date:", date.today())
-            input_corp = f_col1.text_input("Corporation Name:", value=selected_corp)
-            input_name = f_col2.text_input("Player Name:")
-            input_level = f_col2.number_input("Player Level:", min_value=1, max_value=150, value=50)
-            input_value = f_col3.number_input("Company Value (Coins):", min_value=0, value=1000000)
-            input_donations = f_col3.number_input("Weekly Donation Count:", min_value=0, value=0)
-            
-            submit_button = st.form_submit_button("Commit Weekly Stats to Database")
-            
-            if submit_button:
-                if not input_name.strip() or not input_corp.strip():
-                    st.error("Error: Key data fields cannot be blank.")
-                else:
-                    new_row = pd.DataFrame([{
-                        "Date": pd.to_datetime(input_date),
-                        "Corp Name": input_corp.strip(),
-                        "Player Name": input_name.strip(),
-                        "Player Level": int(input_level),
-                        "Company Value": int(input_value),
-                        "Donation Count": int(input_donations)
-                    }])
-                    updated_df = pd.concat([df, new_row], ignore_index=True)
-                    conn.update(worksheet="Corporation_Stats", data=updated_df)
-                    st.success(f"Appended records for {input_name} successfully!")
-                    st.cache_data.clear()
-                    st.rerun()
+        if target_worksheet is not None:
+            with st.form("data_entry_form", clear_on_submit=True):
+                f_col1, f_col2, f_col3 = st.columns(3)
+                input_date = f_col1.date_input("Log Date:", date.today())
+                input_corp = f_col1.text_input("Corporation Name:", value=selected_corp)
+                input_name = f_col2.text_input("Player Name:")
+                input_level = f_col2.number_input("Player Level:", min_value=1, max_value=150, value=50)
+                input_value = f_col3.number_input("Company Value (Coins):", min_value=0, value=1000000)
+                input_donations = f_col3.number_input("Weekly Donation Count:", min_value=0, value=0)
+                
+                submit_button = st.form_submit_button("Commit Weekly Stats to Database")
+                
+                if submit_button:
+                    if not input_name.strip() or not input_corp.strip():
+                        st.error("Error: Key data fields cannot be blank.")
+                    else:
+                        # Append directly using gspread mechanics
+                        new_row = [
+                            str(input_date),
+                            input_corp.strip(),
+                            input_name.strip(),
+                            int(input_level),
+                            int(input_value),
+                            int(input_donations)
+                        ]
+                        target_worksheet.append_row(new_row)
+                        st.success(f"Appended records for {input_name} successfully!")
+                        st.cache_data.clear()
+                        st.timer(1)
+                        st.rerun()
+        else:
+            st.warning("Data submission unavailable due to read-only state.")
+else:
+    st.info("The database appears empty or is structured incorrectly. Verify column headers match exactly: 'Date', 'Corp Name', 'Player Name', 'Player Level', 'Company Value', 'Donation Count'")
