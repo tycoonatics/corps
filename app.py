@@ -9,7 +9,7 @@ from datetime import date
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="RCTT Corporation Hub", page_icon="🏆", layout="wide")
 
-# --- 2. CUSTOM UI STYLING (Knowledge Hub Aesthetic) ---
+# --- 2. CUSTOM UI STYLING (Knowledge Hub Banner + Sidebar) ---
 st.markdown("""
     <style>
     .main-header {
@@ -29,25 +29,17 @@ st.markdown("""
         padding: 15px;
         border-radius: 10px;
     }
-    .section-header {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #1e293b;
-        margin-top: 20px;
-        margin-bottom: 10px;
-        border-bottom: 2px solid #ff0080;
-        padding-bottom: 5px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">🏆 RCTT KNOWLEDGE HUB 🏆</div>', unsafe_allow_html=True)
 
-# --- 3. DATABASE CONNECTION (Base64 Security) ---
+# --- 3. DATABASE CONNECTION (Restored Base64 logic for Cloud) ---
 @st.cache_data(ttl=60)
 def load_data():
     try:
         s = st.secrets["connections"]["gsheets"]
+        # Decodes the Base64 string back into the JSON dictionary needed for Google
         decoded_creds = base64.b64decode(s["encoded_creds"]).decode("utf-8")
         creds_dict = json.loads(decoded_creds)
         
@@ -64,17 +56,17 @@ def load_data():
         st.error(f"❌ Connection Failed: {e}")
         return pd.DataFrame(), None
 
-# --- 4. DATA PROCESSING ---
+# --- 4. DATA PROCESSING (Exact localhost logic) ---
 df, worksheet = load_data()
 
 if not df.empty:
-    # Ensure proper data types exactly like offline version
+    # Ensure columns match the localhost data types exactly
     df['Date'] = pd.to_datetime(df['Date'])
     df['Company Value'] = pd.to_numeric(df['Company Value'], errors='coerce').fillna(0)
     df['Donation Count'] = pd.to_numeric(df['Donation Count'], errors='coerce').fillna(0)
     df['Player Level'] = pd.to_numeric(df['Player Level'], errors='coerce').fillna(1)
 
-    # --- 5. SIDEBAR (STAYS THE SAME) ---
+    # --- 5. SIDEBAR NAVIGATION ---
     st.sidebar.header("Navigation")
     corps = sorted(df['Corp Name'].unique())
     selected_corp = st.sidebar.selectbox("Choose Corporation", corps)
@@ -84,8 +76,8 @@ if not df.empty:
     latest_date = corp_data['Date'].max()
     latest_stats = corp_data[corp_data['Date'] == latest_date]
 
-    # --- 6. TOP LEVEL METRICS (Offline Version Layout) ---
-    st.markdown(f'<div class="section-header">📈 {selected_corp} Overview (As of {latest_date.date()})</div>', unsafe_allow_html=True)
+    # --- 6. TOP LEVEL METRICS (Localhost layout) ---
+    st.subheader(f"📈 {selected_corp} Overview (As of {latest_date.date()})")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Members", len(latest_stats))
     m2.metric("Total Net Worth", f"${latest_stats['Company Value'].sum():,.0f}M")
@@ -93,7 +85,7 @@ if not df.empty:
     avg_lvl = latest_stats['Player Level'].mean()
     m4.metric("Average Level", f"{avg_lvl:.1f}")
 
-    # --- 7. LEADERBOARDS (Offline Version Layout) ---
+    # --- 7. LEADERBOARDS ---
     st.divider()
     col_left, col_right = st.columns(2)
 
@@ -107,7 +99,7 @@ if not df.empty:
         top_don = latest_stats[['Player Name', 'Donation Count']].sort_values(by='Donation Count', ascending=False).head(10)
         st.dataframe(top_don, use_container_width=True, hide_index=True)
 
-    # --- 8. ADMIN ENTRY FORM (Offline Version Functionality) ---
+    # --- 8. ADMIN ENTRY FORM (Identical to local RCTT_Hub build) ---
     st.divider()
     with st.expander("🛠️ Admin: Add/Update Member Stats"):
         with st.form("admin_form", clear_on_submit=True):
@@ -123,6 +115,7 @@ if not df.empty:
             if st.form_submit_button("Submit Stats to Google Sheets"):
                 if f_name:
                     try:
+                        # Append the new row to the worksheet
                         new_row = [str(f_date), f_corp, f_name, f_lvl, f_val, f_don]
                         worksheet.append_row(new_row)
                         st.success(f"Successfully logged stats for {f_name}!")
@@ -134,4 +127,4 @@ if not df.empty:
                     st.warning("Please enter a player name before submitting.")
 
 else:
-    st.warning("⚠️ No data found. Please check your 'Secrets' configuration and ensure the Spreadsheet has data in 'Corporation_Stats'.")
+    st.warning("⚠️ Waiting for data... Please check your 'Secrets' configuration and ensure the Service Account email has 'Editor' access to the Spreadsheet.")
