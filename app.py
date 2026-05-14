@@ -61,17 +61,25 @@ def load_mapped_data():
         
         sh = gc.open_by_url(s["spreadsheet"])
         
+        # Load Reference Data
         ref_df = pd.DataFrame(sh.worksheet("Reference_Data").get_all_records())
+        
+        # Mapping dictionaries
         player_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Display_Name'].to_dict()
+        # Explicitly grabbing the Status column from your Reference_Data
         status_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Status'].to_dict()
         corp_map = ref_df[ref_df['ID_Type'] == 'Corp'].set_index('ID_Value')['Display_Name'].to_dict()
         
+        # Load Stats
         raw_stats_ws = sh.worksheet("Corporation_Stats")
         stats_df = pd.DataFrame(raw_stats_ws.get_all_records())
         
+        # Data Cleaning & Mapping
         stats_df['Date'] = pd.to_datetime(stats_df['Date'], format='mixed', dayfirst=False)
         stats_df['Player Name'] = stats_df['UID'].map(player_map).fillna(stats_df['UID'])
         stats_df['Corp Name'] = stats_df['Corp_ID'].map(corp_map).fillna(stats_df['Corp_ID'])
+        
+        # Apply Status from Reference sheet mapping
         stats_df['Status'] = stats_df['UID'].map(status_map).fillna("Inactive")
         
         for col in ['Lvl', 'CV', 'DC']:
@@ -89,12 +97,15 @@ if not df.empty:
     st.sidebar.header("Global Controls")
     available_corps = sorted(df['Corp Name'].unique())
     selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
+    
+    # Toggle to filter out "Inactive" players listed in your Sheet
     show_active_only = st.sidebar.checkbox("Show Only 'Active' Members", value=True)
     
     corp_df = df[df['Corp Name'] == selected_corp_name].sort_values('Date', ascending=False)
     
+    # Filter logic: keeps rows only where Status is 'Active'
     if show_active_only:
-        view_df = corp_df[corp_df['Status'].str.contains("Active", case=False, na=False)]
+        view_df = corp_df[corp_df['Status'].astype(str).str.contains("Active", case=False, na=False)]
     else:
         view_df = corp_df
 
@@ -130,6 +141,7 @@ if not df.empty:
         st.markdown('<div class="section-header">👑 Hall of Fame (Filtered)</div>', unsafe_allow_html=True)
         h1, h2, h3 = st.columns(3)
         
+        # Grouping based on the filtered view_df
         h1.subheader("🏆 Peak Level")
         h1.dataframe(view_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False).reset_index(), 
                      column_config={"Lvl": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
@@ -147,6 +159,8 @@ if not df.empty:
         st.markdown('<div class="section-header">🔥 Active Engagement Streaks</div>', unsafe_allow_html=True)
         streak_data = []
         distinct_weeks = sorted(corp_df['Date'].unique(), reverse=True)
+        
+        # Calculate streaks for players currently in the view
         for uid in view_df['UID'].unique():
             p_logs = corp_df[corp_df['UID'] == uid]
             logged_dates = set(p_logs['Date'])
@@ -157,21 +171,23 @@ if not df.empty:
             streak_data.append({"Status": p_logs['Status'].iloc[0], "Player Name": p_logs['Player Name'].iloc[0], "Weeks Active": count})
         
         st.dataframe(pd.DataFrame(streak_data).sort_values("Weeks Active", ascending=False), 
-                     column_config={"Weeks Active": st.column_config.NumberColumn(format="🔥 %d")},
+                     column_config={"Weeks Active": st.column_config.NumberColumn("Weeks Active", format="🔥 %d")},
                      hide_index=True, use_container_width=True)
 
     # --- TAB 4: MEMBER PROFILES ---
     with tab_profiles:
         st.markdown('<div class="section-header">👤 Individual Member Tracking</div>', unsafe_allow_html=True)
+        # Search includes everyone (active and inactive) for historical lookup
         all_players = sorted(corp_df['Player Name'].unique())
-        sel_player = st.selectbox("Search Member:", all_players)
+        sel_player = st.selectbox("Search Member Name:", all_players)
         p_history = corp_df[corp_df['Player Name'] == sel_player].sort_values('Date')
         
         p_col1, p_col2 = st.columns([1, 2])
-        p_col1.metric("Status", p_history['Status'].iloc[0])
+        p_col1.metric("Current Status", p_history['Status'].iloc[0])
+        # Manually formatting metrics to ensure commas appear
         p_col1.metric("Peak Lvl", f"{int(p_history['Lvl'].max()):,}")
         p_col1.metric("Lifetime DC", f"{int(p_history['DC'].sum()):,}")
-        p_col2.plotly_chart(px.line(p_history, x='Date', y='CV', title='CV Progression Over Time', markers=True), use_container_width=True)
+        p_col2.plotly_chart(px.line(p_history, x='Date', y='CV', title='CV Progression', markers=True), use_container_width=True)
 
     # --- TAB 5: ADMIN ENTRY ---
     with tab_admin:
@@ -190,9 +206,9 @@ if not df.empty:
                 
                 if st.form_submit_button("Submit Weekly Stats"):
                     stats_ws.append_row([str(in_date), in_cid, in_uid, int(in_lvl), int(in_cv), int(in_dc)])
-                    st.success(f"Data for {in_uid} saved successfully!")
+                    st.success("Data saved! Refreshing...")
                     st.cache_data.clear()
                     st.rerun()
 
 else:
-    st.info("Hub ready. Please ensure your 'Reference_Data' and 'Corporation_Stats' are populated.")
+    st.info("Hub ready. Ensure 'Reference_Data' has a 'Status' column in Column D.")
