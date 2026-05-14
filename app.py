@@ -41,7 +41,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header">🏆 RCTT KNOWLEDGE HUB 🏆</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🏆 RCTT Corporation Network 🏆</div>', unsafe_allow_html=True)
 
 # --- 3. DATABASE CONNECTION (Robust Base64 for Cloud) ---
 @st.cache_data(ttl=5) # Matches your 5s TTL
