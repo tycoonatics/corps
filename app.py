@@ -29,7 +29,7 @@ st.title("🏆 RCTT Corporation Hub Network")
 
 # 1. Connect to Google Sheets using Streamlit's native cloud connection API
 try:
-    # This natively reads your secrets.toml parameters without needing streamlit-gsheets
+    # This reads your cloud secrets.toml box automatically
     conn = st.connection("gsheets", type="spreadsheet")
     df = conn.read(worksheet="Corporation_Stats", ttl="5s")
     df['Date'] = pd.to_datetime(df['Date'])
