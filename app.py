@@ -5,11 +5,12 @@ import base64
 import json
 from google.oauth2.service_account import Credentials
 from datetime import date, timedelta
+import plotly.express as px
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="RCTT Corporation Hub", page_icon="🏆", layout="wide")
 
-# --- 2. CUSTOM UI STYLING (The exact look from your snippet + Knowledge Hub Banner) ---
+# --- 2. CUSTOM UI STYLING (Knowledge Hub Branding) ---
 st.markdown("""
     <style>
     .main-header {
@@ -38,14 +39,18 @@ st.markdown("""
         margin-top: 25px;
         color: #1e293b;
     }
+    /* Hide Streamlit Branding for Stealth Mode */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header">🏆 RCTT Corporation Network 🏆</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🏆 RCTT KNOWLEDGE HUB 🏆</div>', unsafe_allow_html=True)
 
-# --- 3. DATABASE CONNECTION (Robust Base64 for Cloud) ---
-@st.cache_data(ttl=5) # Matches your 5s TTL
-def load_data():
+# --- 3. DATABASE CONNECTION & MAPPING LOGIC ---
+@st.cache_data(ttl=5)
+def load_mapped_data():
     try:
         s = st.secrets["connections"]["gsheets"]
         decoded_creds = base64.b64decode(s["encoded_creds"]).decode("utf-8")
@@ -55,216 +60,139 @@ def load_data():
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         gc = gspread.authorize(creds)
         
-        sh = gc.open_by_url(s["spreadsheet"])
-        worksheet = sh.worksheet("Corporation_Stats")
+        # Open the specific spreadsheet
+        sh = gc.open("RCTT_Hub_DB")
         
-        data = worksheet.get_all_records()
-        df = pd.DataFrame(data)
+        # Load Reference Data (Dictionary)
+        ref_df = pd.DataFrame(sh.worksheet("Reference_Data").get_all_records())
+        player_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Display_Name'].to_dict()
+        corp_map = ref_df[ref_df['ID_Type'] == 'Corp'].set_index('ID_Value')['Display_Name'].to_dict()
         
-        # Exact Data Typing from your snippet
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['Player Level'] = pd.to_numeric(df['Player Level'], errors='coerce').fillna(0).astype(int)
-        df['Company Value'] = pd.to_numeric(df['Company Value'], errors='coerce').fillna(0).astype(int)
-        df['Donation Count'] = pd.to_numeric(df['Donation Count'], errors='coerce').fillna(0).astype(int)
+        # Load Raw Statistics
+        raw_stats_ws = sh.worksheet("Corporation_Stats")
+        stats_df = pd.DataFrame(raw_stats_ws.get_all_records())
         
-        return df, worksheet
+        # Data Cleaning & Mapping
+        stats_df['Date'] = pd.to_datetime(stats_df['Date'])
+        stats_df['Player Name'] = stats_df['UID'].map(player_map).fillna(stats_df['UID'])
+        stats_df['Corp Name'] = stats_df['Corp_ID'].map(corp_map).fillna(stats_df['Corp_ID'])
+        
+        # Ensure numeric types for calculations
+        num_cols = ['Level', 'Value', 'Donations']
+        for col in num_cols:
+            stats_df[col] = pd.to_numeric(stats_df[col], errors='coerce').fillna(0)
+            
+        return stats_df, raw_stats_ws, player_map, corp_map
     except Exception as e:
-        st.error(f"❌ Connection Failed: {e}")
-        return pd.DataFrame(), None
+        st.error(f"❌ Connection or Mapping Failed: {e}")
+        return pd.DataFrame(), None, {}, {}
 
-# --- 4. LOAD & FILTER DATA ---
-df, worksheet = load_data()
+df, stats_ws, player_map, corp_map = load_mapped_data()
 
+# --- 4. APP DASHBOARD ---
 if not df.empty:
-    # Sidebar navigation (as requested)
-    st.sidebar.header("Navigation")
+    # Sidebar Global Filters
+    st.sidebar.header("Global Controls")
     available_corps = sorted(df['Corp Name'].unique())
-    selected_corp = st.sidebar.selectbox("Choose Active Corporation:", available_corps)
+    selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
     
-    corp_df = df[df['Corp Name'] == selected_corp]
-    
-    if not corp_df.empty:
-        latest_date = corp_df['Date'].max()
-        latest_df = corp_df[corp_df['Date'] == latest_date]
+    # Filter primary dataframe
+    corp_df = df[df['Corp Name'] == selected_corp_name].sort_values('Date', ascending=False)
+    latest_date = corp_df['Date'].max()
+    latest_df = corp_df[corp_df['Date'] == latest_date]
 
-        # ==========================================
-        # TOP ROW: HEADLINE METRICS (Calculated exactly like local)
-        # ==========================================
-        total_value = latest_df['Company Value'].sum()
-        total_donations = latest_df['Donation Count'].sum()
-        member_count = latest_df['Player Name'].nunique()
+    # Organize Hub into Tabs
+    tab_overview, tab_leaderboards, tab_profiles, tab_admin = st.tabs([
+        "🏠 Overview", "📊 Leaderboards", "👤 Member Profiles", "🔑 Admin Entry"
+    ])
+
+    # --- TAB 1: OVERVIEW ---
+    with tab_overview:
+        st.markdown(f'<div class="section-header">📈 {selected_corp_name} Summary ({latest_date.date()})</div>', unsafe_allow_html=True)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Roster", f"{len(latest_df)}/20")
+        m2.metric("Net Worth", f"${latest_df['Value'].sum():,.0f}M")
+        m3.metric("Total Donations", f"{latest_df['Donations'].sum():,.0f}")
+        m4.metric("Avg Level", f"{latest_df['Level'].mean():.1f}")
         
-        # Monthly Gains Logic
-        month_ago_date = latest_date - timedelta(days=30)
-        historical_corp_df = corp_df[corp_df['Date'] <= month_ago_date]
-        
-        if not historical_corp_df.empty:
-            oldest_recorded_date = historical_corp_df['Date'].max()
-            past_df = corp_df[corp_df['Date'] == oldest_recorded_date]
-            monthly_cv_delta = total_value - past_df['Company Value'].sum()
-            monthly_dc_delta = total_donations - past_df['Donation Count'].sum()
-        else:
-            monthly_cv_delta = 0
-            monthly_dc_delta = 0
-            
-        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-        m_col1.metric("Active Corp", selected_corp)
-        m_col2.metric("Roster", f"{member_count}/20 Members")
-        m_col3.metric("Total Value", f"${total_value:,.0f} M", delta=f"{monthly_cv_delta:+,} M Month")
-        m_col4.metric("Weekly Donations", f"{total_donations:,} DC", delta=f"{monthly_dc_delta:+,} DC Month")
+        st.write("### 🔥 Current Standings")
+        st.dataframe(latest_df[['Player Name', 'Level', 'Value', 'Donations']], hide_index=True, use_container_width=True)
 
-        # ==========================================
-        # ROW 2: WEEKLY PERFORMANCE LEADERBOARDS
-        # ==========================================
-        st.markdown('<div class="section-header">📊 Weekly Performance Leaderboards</div>', unsafe_allow_html=True)
-        lead_col1, lead_col2, lead_col3 = st.columns(3)
-        
-        with lead_col1:
-            st.subheader("🔺 Level Standings")
-            lvl_df = latest_df[["Player Name", "Player Level"]].sort_values(by="Player Level", ascending=False).reset_index(drop=True)
-            lvl_df.index += 1
-            st.dataframe(lvl_df, use_container_width=True)
-            
-        with lead_col2:
-            st.subheader("💰 Company Value")
-            cv_df = latest_df[["Player Name", "Company Value"]].sort_values(by="Company Value", ascending=False).reset_index(drop=True)
-            cv_df.index += 1
-            st.dataframe(cv_df, use_container_width=True, column_config={"Company Value": st.column_config.NumberColumn(format="%,d M")})
-            
-        with lead_col3:
-            st.subheader("🟢 Donation Count (DC)")
-            dc_df = latest_df[["Player Name", "Donation Count"]].sort_values(by="Donation Count", ascending=False).reset_index(drop=True)
-            dc_df.index += 1
-            st.dataframe(dc_df, use_container_width=True, column_config={"Donation Count": st.column_config.NumberColumn(format="%,d")})
+    # --- TAB 2: LEADERBOARDS & STREAKS ---
+    with tab_leaderboards:
+        st.markdown('<div class="section-header">🏅 Weekly Performance</div>', unsafe_allow_html=True)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.subheader("💰 Top Company Value")
+            st.dataframe(latest_df[['Player Name', 'Value']].sort_values('Value', ascending=False), hide_index=True, use_container_width=True)
+        with col_b:
+            st.subheader("🟢 Weekly Donation Leaders")
+            st.dataframe(latest_df[['Player Name', 'Donations']].sort_values('Donations', ascending=False), hide_index=True, use_container_width=True)
 
-        # ==========================================
-        # ROW 3: MONTHLY PROGRESS LEADERBOARDS 
-        # ==========================================
-        st.markdown('<div class="section-header">📅 Monthly Gains & Growth Leaderboards (Last 30 Days)</div>', unsafe_allow_html=True)
-        if not historical_corp_df.empty:
-            base_df = corp_df[corp_df['Date'] == oldest_recorded_date][['Player Name', 'Player Level', 'Company Value']]
-            base_df.columns = ['Player Name', 'Base Level', 'Base CV']
-            
-            monthly_merge = pd.merge(latest_df, base_df, on='Player Name', how='left')
-            monthly_merge['Base Level'] = monthly_merge['Base Level'].fillna(monthly_merge['Player Level'])
-            monthly_merge['Base CV'] = monthly_merge['Base CV'].fillna(monthly_merge['Company Value'])
-            
-            monthly_merge['Δ Lvl'] = monthly_merge['Player Level'] - monthly_merge['Base Level']
-            monthly_merge['Δ CV'] = monthly_merge['Company Value'] - monthly_merge['Base CV']
-            
-            m_lead1, m_lead2, m_lead3 = st.columns(3)
-            with m_lead1:
-                st.subheader("🔺 Monthly Δ Level")
-                m_lvl = monthly_merge[["Player Name", "Δ Lvl"]].sort_values(by="Δ Lvl", ascending=False).reset_index(drop=True)
-                m_lvl.index += 1
-                st.dataframe(m_lvl, use_container_width=True, column_config={"Δ Lvl": st.column_config.NumberColumn(format="+%,d")})
-            with m_lead2:
-                st.subheader("💰 Monthly Δ CV")
-                m_cv = monthly_merge[["Player Name", "Δ CV"]].sort_values(by="Δ CV", ascending=False).reset_index(drop=True)
-                m_cv.index += 1
-                st.dataframe(m_cv, use_container_width=True, column_config={"Δ CV": st.column_config.NumberColumn(format="+%,d M")})
-            with m_lead3:
-                st.subheader("🟢 Monthly Accumulated DC")
-                recent_dc = corp_df[corp_df['Date'] > month_ago_date].groupby('Player Name')['Donation Count'].sum().reset_index()
-                recent_dc.columns = ['Player Name', 'Total Monthly DC']
-                m_dc = recent_dc.sort_values(by="Total Monthly DC", ascending=False).reset_index(drop=True)
-                m_dc.index += 1
-                st.dataframe(m_dc, use_container_width=True, column_config={"Total Monthly DC": st.column_config.NumberColumn(format="%,d")})
-        else:
-            st.info("Log at least two weeks of data to generate monthly delta calculations.")
-
-        # ==========================================
-        # ROW 4: ALL-TIME OVERALL HALL OF FAME
-        # ==========================================
-        st.markdown('<div class="section-header">👑 All-Time Overall Hall of Fame Standings</div>', unsafe_allow_html=True)
-        all_time_col1, all_time_col2, all_time_col3 = st.columns(3)
-        
-        with all_time_col1:
-            st.subheader("🏆 Peak Player Level")
-            overall_lvl = corp_df.groupby('Player Name')['Player Level'].max().reset_index().sort_values(by='Player Level', ascending=False).reset_index(drop=True)
-            overall_lvl.index += 1
-            st.dataframe(overall_lvl, use_container_width=True)
-        with all_time_col2:
-            st.subheader("👑 Highest Company Value")
-            overall_cv = corp_df.groupby('Player Name')['Company Value'].max().reset_index().sort_values(by='Company Value', ascending=False).reset_index(drop=True)
-            overall_cv.index += 1
-            st.dataframe(overall_cv, use_container_width=True, column_config={"Company Value": st.column_config.NumberColumn(format="%,d M")})
-        with all_time_col3:
-            st.subheader("💫 Lifetime Cumulative Donations")
-            overall_dc = corp_df.groupby('Player Name')['Donation Count'].sum().reset_index()
-            overall_dc.columns = ['Player Name', 'Lifetime Total DC']
-            overall_dc = overall_dc.sort_values(by='Lifetime Total DC', ascending=False).reset_index(drop=True)
-            overall_dc.index += 1
-            st.dataframe(overall_dc, use_container_width=True, column_config={"Lifetime Total DC": st.column_config.NumberColumn(format="%,d")})
-
-        # ==========================================
-        # ROW 5: STREAKS HIGHLIGHT PANEL
-        # ==========================================
-        st.markdown('<div class="section-header">🔥 Active Corporation Streaks (Consecutive Weeks)</div>', unsafe_allow_html=True)
-        streak_data = []
-        all_players_list = corp_df['Player Name'].unique()
+        st.markdown('<div class="section-header">🔥 Participation Streaks</div>', unsafe_allow_html=True)
+        # Logic to calculate consecutive weeks logged
+        streak_list = []
+        all_uids = corp_df['UID'].unique()
         distinct_weeks = sorted(corp_df['Date'].unique(), reverse=True)
         
-        for player in all_players_list:
-            player_logs = corp_df[corp_df['Player Name'] == player]
-            logged_dates = set(player_logs['Date'])
+        for uid in all_uids:
+            p_logs = corp_df[corp_df['UID'] == uid]
+            p_name = p_logs['Player Name'].iloc[0]
+            logged_dates = set(p_logs['Date'])
             
-            weeks_streak = 0
-            for week in distinct_weeks:
-                if week in logged_dates: weeks_streak += 1
+            count = 0
+            for w in distinct_weeks:
+                if w in logged_dates: count += 1
                 else: break
+            streak_list.append({"Player": p_name, "Streak": f"🔥 {count} Weeks"})
             
-            donation_streak = 0
-            for week in distinct_weeks:
-                if week in logged_dates:
-                    week_dc = player_logs[player_logs['Date'] == week]['Donation Count'].values[0]
-                    if week_dc > 0: donation_streak += 1
-                    else: break
-                else: break
-            
-            streak_data.append({"Player Name": player, "Weeks in Corp (Streak)": f"🔥 {weeks_streak} Wks", "Donation Streak (Active)": f"💚 {donation_streak} Wks" if donation_streak > 0 else "---"})
-            
-        streak_df = pd.DataFrame(streak_data).sort_values(by="Weeks in Corp (Streak)", ascending=False).reset_index(drop=True)
-        streak_df.index += 1
-        st.dataframe(streak_df, use_container_width=True)
+        st.table(pd.DataFrame(streak_list).sort_values('Streak', ascending=False).head(10))
 
-        # ==========================================
-        # ROW 6: CHARTS & HISTORICAL TRENDS
-        # ==========================================
-        st.markdown('<div class="section-header">📈 Performance History & Trends</div>', unsafe_allow_html=True)
-        chart_col1, chart_col2 = st.columns(2)
-        corp_timeline = corp_df.groupby('Date').agg({'Donation Count': 'sum', 'Company Value': 'sum'}).reset_index()
-        with chart_col1:
-            st.markdown("**Last Week's Individual Donation Distribution**")
-            st.bar_chart(latest_df.set_index('Player Name')['Donation Count'])
-        with chart_col2:
-            st.markdown("**Corp Donation Volume (6-Week View)**")
-            st.line_chart(corp_timeline.set_index('Date')['Donation Count'])
+    # --- TAB 3: MEMBER PROFILES ---
+    with tab_profiles:
+        st.markdown('<div class="section-header">👤 Historical Player Profile</div>', unsafe_allow_html=True)
+        selected_player = st.selectbox("Select Member:", sorted(corp_df['Player Name'].unique()))
+        
+        p_history = corp_df[corp_df['Player Name'] == selected_player].sort_values('Date')
+        
+        c_left, c_right = st.columns([1, 2])
+        with c_left:
+            st.metric("All-Time Peak Level", p_history['Level'].max())
+            st.metric("Lifetime Donation Vol", f"{p_history['Donations'].sum():,.0f}")
+            st.metric("Highest Value Hit", f"${p_history['Value'].max():,.0f}M")
+        
+        with c_right:
+            fig = px.line(p_history, x='Date', y='Value', title='Company Value Progression', markers=True)
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- TAB 4: ADMIN ENTRY ---
+    with tab_admin:
+        st.markdown('<div class="section-header">🔑 Log New Entry</div>', unsafe_allow_html=True)
+        with st.form("data_entry", clear_on_submit=True):
+            f1, f2 = st.columns(2)
+            in_date = f1.date_input("Date", date.today())
+            in_uid = f1.text_input("Player UID (Must match Reference Data)")
             
-        # ==========================================
-        # ROW 7: ENTRY FORM PANEL (Admin Tool)
-        # ==========================================
-        st.markdown('<div class="section-header">🔑 Corporation Administration Log Panel</div>', unsafe_allow_html=True)
-        with st.form("data_entry_form", clear_on_submit=True):
-            f_col1, f_col2, f_col3 = st.columns(3)
-            input_date = f_col1.date_input("Log Date:", date.today())
-            input_corp = f_col1.text_input("Corporation Name:", value=selected_corp)
-            input_name = f_col2.text_input("Player Name:")
-            input_level = f_col2.number_input("Player Level:", min_value=1, max_value=999, value=50)
-            input_value = f_col3.number_input("Company Value (Millions):", min_value=0, value=100)
-            input_donations = f_col3.number_input("Weekly Donation Count:", min_value=0, value=0)
+            # Show name preview to avoid errors
+            if in_uid in player_map:
+                f1.success(f"Recognized: **{player_map[in_uid]}**")
+            elif in_uid:
+                f1.warning("New UID detected. Ensure you add this to Reference Data sheet.")
+                
+            in_corp_id = f2.text_input("Corp ID", value=latest_df['Corp_ID'].iloc[0] if not latest_df.empty else "")
+            in_lvl = f2.number_input("Current Level", 1, 999, 50)
+            in_val = f1.number_input("Company Value (M)", 0, 1000000, 100)
+            in_don = f2.number_input("Donations This Week", 0, 100000, 0)
             
-            if st.form_submit_button("Commit Weekly Stats to Database"):
-                if input_name.strip() and input_corp.strip():
-                    try:
-                        new_row = [str(input_date), input_corp.strip(), input_name.strip(), int(input_level), int(input_value), int(input_donations)]
-                        worksheet.append_row(new_row)
-                        st.success(f"Appended records for {input_name} successfully!")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+            if st.form_submit_button("Commit to Spreadsheet"):
+                if in_uid and in_corp_id:
+                    # Append exactly as the columns are named in your sheet
+                    new_row = [str(in_date), in_corp_id, in_uid, in_lvl, in_val, in_don]
+                    stats_ws.append_row(new_row)
+                    st.success("Entry recorded! Refreshing...")
+                    st.cache_data.clear()
+                    st.rerun()
                 else:
-                    st.error("Error: Player Name and Corporation cannot be blank.")
+                    st.error("UID and Corp ID are required.")
 else:
-    st.warning("⚠️ Waiting for data... Ensure your Spreadsheet is shared with the Service Account email.")
+    st.info("The Hub is ready. Please add your first entries in the 'Admin Entry' tab or directly in the 'Corporation_Stats' sheet.")
