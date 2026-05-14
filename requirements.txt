@@ -1,3 +1,4 @@
-streamlit
+streamlit>=1.30.0
 pandas
-google-cloud-firestore
+gspread
+google-auth
