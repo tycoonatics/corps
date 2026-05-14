@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import date, timedelta
 
@@ -28,9 +27,10 @@ st.markdown("""
 
 st.title("🏆 RCTT Corporation Hub Network")
 
-# 1. Connect to Google Sheets
+# 1. Connect to Google Sheets using Streamlit's native cloud connection API
 try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    # This natively reads your secrets.toml parameters without needing streamlit-gsheets
+    conn = st.connection("gsheets", type="spreadsheet")
     df = conn.read(worksheet="Corporation_Stats", ttl="5s")
     df['Date'] = pd.to_datetime(df['Date'])
     
@@ -38,7 +38,7 @@ try:
     df['Company Value'] = pd.to_numeric(df['Company Value'], errors='coerce').fillna(0).astype(int)
     df['Donation Count'] = pd.to_numeric(df['Donation Count'], errors='coerce').fillna(0).astype(int)
 except Exception as e:
-    st.error("Could not connect to Google Sheets. Verify your configuration.")
+    st.error("Could not connect to Google Sheets. Verify your configuration secrets.")
     df = pd.DataFrame(columns=["Date", "Corp Name", "Player Name", "Player Level", "Company Value", "Donation Count"])
 
 if not df.empty:
@@ -172,11 +172,10 @@ if not df.empty:
             st.dataframe(overall_dc, use_container_width=True, column_config={"Lifetime Total DC": st.column_config.NumberColumn(format="%,d")})
 
         # ==========================================
-        # NEW ROW 5: STREAKS HIGHLIGHT PANEL
+        # ROW 5: STREAKS HIGHLIGHT PANEL
         # ==========================================
         st.markdown('<div class="section-header">🔥 Active Corporation Streaks (Consecutive Weeks)</div>', unsafe_allow_html=True)
         
-        # Calculate active streaks sequentially based on dates
         streak_data = []
         all_players_list = corp_df['Player Name'].unique()
         distinct_weeks = sorted(corp_df['Date'].unique(), reverse=True)
@@ -185,15 +184,13 @@ if not df.empty:
             player_logs = corp_df[corp_df['Player Name'] == player]
             logged_dates = set(player_logs['Date'])
             
-            # 1. Calculate consecutive weeks on roster
             weeks_streak = 0
             for week in distinct_weeks:
                 if week in logged_dates:
                     weeks_streak += 1
                 else:
-                    break # Gap found, streak broken
+                    break
                     
-            # 2. Calculate continuous donation streaks
             donation_streak = 0
             for week in distinct_weeks:
                 if week in logged_dates:
