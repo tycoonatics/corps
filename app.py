@@ -163,7 +163,7 @@ if not df.empty:
     df['is_RS'] = df['Player Name'] == df['RS_Winner']
     df['is_RotW'] = df['Player Name'] == df['RotW_Winner']
 
-    # Helper function for calculating streaks
+    # Helper function for calculating simple streaks
     def get_longest_streak(history_list):
         longest, current = 0, 0
         for val in history_list:
@@ -173,6 +173,37 @@ if not df.empty:
             else:
                 current = 0
         return longest
+
+    # Advanced Engine: Parses history and returns detailed list of individual streak blocks
+    def calculate_streak_details(player_df, metric_col, type_label, latest_corp_date):
+        p_sorted = player_df.sort_values('Date', ascending=True)
+        streaks = []
+        current_streak = []
+        
+        for idx, row in p_sorted.iterrows():
+            if row[metric_col]:
+                current_streak.append(row['Date'])
+            else:
+                if current_streak:
+                    streaks.append({
+                        "Type": type_label,
+                        "Name": row['Player Name'],
+                        "Weeks": len(current_streak),
+                        "Start Date": current_streak[0],
+                        "End Date": current_streak[-1],
+                        "Is Active": current_streak[-1] == latest_corp_date
+                    })
+                    current_streak = []
+        if current_streak:
+            streaks.append({
+                "Type": type_label,
+                "Name": p_sorted.iloc[-1]['Player Name'],
+                "Weeks": len(current_streak),
+                "Start Date": current_streak[0],
+                "End Date": current_streak[-1],
+                "Is Active": current_streak[-1] == latest_corp_date
+            })
+        return streaks
 
 # --- 4. APP DASHBOARD ---
 if not df.empty:
@@ -365,15 +396,12 @@ if not df.empty:
             if not active_df.empty:
                 lvl_grind_df = active_df[~((active_df['Lvl'] >= 999) & (active_df['Lvl Gain'] == 0))]
                 
-                # Group by player for separate metric branches strictly using the curated active dataset
                 lvl_avg = lvl_grind_df.groupby('Player Name')['Lvl Gain'].mean().reset_index().rename(columns={'Lvl Gain': 'Avg Lvl Gain'})
                 cv_avg = active_df.groupby('Player Name')['CV Gain'].mean().reset_index().rename(columns={'CV Gain': 'Avg CV Gain'})
                 dc_avg = active_df.groupby('Player Name')['DC Gain'].mean().reset_index().rename(columns={'DC Gain': 'Avg DC Gain'})
                 
-                # Merge the calculated active branches cleanly together
                 grind_df = lvl_avg.merge(cv_avg, on='Player Name', how='inner').merge(dc_avg, on='Player Name', how='inner').fillna(0)
                 
-                # Assign distinct leaderboard rankings based on clean averages
                 grind_df['L_Grind_Rank'] = grind_df['Avg Lvl Gain'].rank(ascending=False, method='min')
                 grind_df['C_Grind_Rank'] = grind_df['Avg CV Gain'].rank(ascending=False, method='min')
                 grind_df['D_Grind_Rank'] = grind_df['Avg DC Gain'].rank(ascending=False, method='min')
@@ -403,37 +431,96 @@ if not df.empty:
             st.markdown('<div class="section-header">🔥 Elite Performance Streaks</div>', unsafe_allow_html=True)
             st.caption("Format: Active (Longest Ever)")
 
-            def get_streak_metrics(p_hist, col):
-                history = p_hist.sort_values('Date', ascending=True)[col].tolist()
-                active, longest, current_running = 0, 0, 0
-                for val in history:
-                    if val:
-                        current_running += 1
-                        longest = max(longest, current_running)
-                    else:
-                        current_running = 0
-                for val in reversed(history):
-                    if val: active += 1
-                    else: break
-                return f"{active} ({longest})"
+            # Master dictionary map to assign strings cleanly
+            metric_map = {
+                'L3': 'Δ Lvl',
+                'C3': 'Δ CV',
+                'D3': 'Δ DC',
+                'D1K': '1k+ DC',
+                'is_RotW': 'RotW',
+                'is_RS': 'RS'
+            }
 
+            max_corp_date = active_df['Date'].max()
+
+            # Main matrix loop summary build
             final_s = []
+            all_historical_streaks = []
+
             for uid in active_df['UID'].unique():
                 p_h = active_df[active_df['UID'] == uid]
+                p_name = p_h['Player Name'].iloc[0]
+                
+                # Capture structural timeline tracking metrics
+                history_metrics = {}
+                for col_key, label in metric_map.items():
+                    history_metrics[col_key] = p_h.sort_values('Date', ascending=True)[col_key].tolist()
+                    # Gather comprehensive historical lists
+                    extracted = calculate_streak_details(p_h, col_key, label, max_corp_date)
+                    all_historical_streaks.extend(extracted)
+
+                def stringify_streaks(history_list):
+                    act, lng, run = 0, 0, 0
+                    for val in history_list:
+                        if val:
+                            run += 1
+                            lng = max(lng, run)
+                        else:
+                            run = 0
+                    for val in reversed(history_list):
+                        if val: act += 1
+                        else: break
+                    return f"{act} ({lng})"
+
                 final_s.append({
-                    "Player Name": p_h['Player Name'].iloc[0],
-                    "Lvl Top 3": get_streak_metrics(p_h, 'L3'),
-                    "CV Top 3": get_streak_metrics(p_h, 'C3'),
-                    "DC Top 3": get_streak_metrics(p_h, 'D3'),
-                    "1,000+ DC": get_streak_metrics(p_h, 'D1K'),
-                    "RotW": get_streak_metrics(p_h, 'is_RotW'),
-                    "Rising Star": get_streak_metrics(p_h, 'is_RS')
+                    "Player Name": p_name,
+                    "Lvl Top 3": stringify_streaks(history_metrics['L3']),
+                    "CV Top 3": stringify_streaks(history_metrics['C3']),
+                    "DC Top 3": stringify_streaks(history_metrics['D3']),
+                    "1,000+ DC": stringify_streaks(history_metrics['D1K']),
+                    "RotW": stringify_streaks(history_metrics['is_RotW']),
+                    "Rising Star": stringify_streaks(history_metrics['is_RS'])
                 })
             
             s_df = pd.DataFrame(final_s)
             s_df['sort_val'] = s_df['DC Top 3'].apply(lambda x: int(x.split()[0]))
             st.dataframe(s_df.sort_values("sort_val", ascending=False).drop(columns=['sort_val']), 
                          hide_index=True, use_container_width=True)
+
+            # --- SUB-TABLE SECTION: TOP ACTIVE & LONGEST STREAKS ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("---")
+            
+            if all_historical_streaks:
+                master_streak_df = pd.DataFrame(all_historical_streaks)
+                
+                # Format datetime to string presentation match
+                master_streak_df['Start Date'] = master_streak_df['Start Date'].dt.strftime('%m/%d/%Y')
+                master_streak_df['End Date'] = master_streak_df['End Date'].dt.strftime('%m/%d/%Y')
+                
+                # Build Leaderboard 1: Top Active Streaks
+                active_streaks_df = master_streak_df[master_streak_df['Is Active'] == True].copy()
+                active_streaks_df = active_streaks_df.sort_values('Weeks', ascending=False).head(10)
+                active_streaks_df['End Date'] = "Streak Active!"
+                active_streaks_display = active_streaks_df[['Type', 'Name', 'Weeks', 'Start Date', 'End Date']].rename(
+                    columns={'Type': 'Type Name', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date', 'End Date': 'Status'}
+                )
+                
+                # Build Leaderboard 2: Top Longest Historical Streaks
+                longest_streaks_df = master_streak_df.sort_values('Weeks', ascending=False).head(10).copy()
+                longest_display = longest_streaks_df[['Type', 'Name', 'Weeks', 'Start Date', 'End Date']].rename(
+                    columns={'Type': 'Type Name', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date', 'End Date': 'End Date'}
+                )
+                
+                # Output side-by-side matching columns
+                c_streak_1, c_streak_2 = st.columns(2)
+                with c_streak_1:
+                    st.markdown('### 🔥 Top Active Streaks')
+                    st.dataframe(active_display, hide_index=True, use_container_width=True)
+                    
+                with c_streak_2:
+                    st.markdown('### 👑 Top Longest Streaks')
+                    st.dataframe(longest_display, hide_index=True, use_container_width=True)
 
         # TAB 7: PROFILES
         with tabs[7]:
