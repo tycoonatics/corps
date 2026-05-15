@@ -324,15 +324,11 @@ if not df.empty:
         # TAB 4: ANNUAL LEADERBOARDS
         with tabs[4]:
             st.markdown('<div class="section-header">👑 Annual Growth Standings (Active Members)</div>', unsafe_allow_html=True)
-            
-            # Extract distinct available years from dynamic data history, fallback defaults to 2026/2025
             available_years = sorted(active_df['Date'].dt.year.unique(), reverse=True)
             if not available_years:
                 available_years = [2026, 2025]
                 
             selected_year = st.selectbox("Select Calendar Year:", available_years, key="annual_year_sel")
-            
-            # Slice historical segments bound exactly to selected year limits
             annual_df = active_df[active_df['Date'].dt.year == selected_year].copy()
             
             if not annual_df.empty:
@@ -362,14 +358,18 @@ if not df.empty:
             st.markdown('<div class="section-header">🏋️ True Grind Index (Historical Weekly Averages)</div>', unsafe_allow_html=True)
             
             if not active_df.empty:
+                # FIXED: Force filter to pull strictly from active players only, then filter out capped zeros
                 lvl_grind_df = active_df[~((active_df['Lvl'] >= 999) & (active_df['Lvl Gain'] == 0))]
                 
+                # Group by player for separate metric branches strictly using active dataset
                 lvl_avg = lvl_grind_df.groupby('Player Name')['Lvl Gain'].mean().reset_index().rename(columns={'Lvl Gain': 'Avg Lvl Gain'})
                 cv_avg = active_df.groupby('Player Name')['CV Gain'].mean().reset_index().rename(columns={'CV Gain': 'Avg CV Gain'})
                 dc_avg = active_df.groupby('Player Name')['DC Gain'].mean().reset_index().rename(columns={'DC Gain': 'Avg DC Gain'})
                 
+                # Re-merge the calculated branches cleanly back together
                 grind_df = lvl_avg.merge(cv_avg, on='Player Name', how='outer').merge(dc_avg, on='Player Name', how='outer').fillna(0)
                 
+                # Assign distinct leaderboard rankings based on clean averages
                 grind_df['L_Grind_Rank'] = grind_df['Avg Lvl Gain'].rank(ascending=False, method='min')
                 grind_df['C_Grind_Rank'] = grind_df['Avg CV Gain'].rank(ascending=False, method='min')
                 grind_df['D_Grind_Rank'] = grind_df['Avg DC Gain'].rank(ascending=False, method='min')
