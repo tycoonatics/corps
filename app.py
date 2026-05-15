@@ -181,7 +181,13 @@ if not df.empty:
     selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
     
     full_corp_history = df[df['Corp Name'] == selected_corp_name]
-    active_df = full_corp_history[full_corp_history['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
+    
+    # Identify players who are strictly active based on their LATEST log entry
+    latest_player_snapshots = full_corp_history.sort_values('Date').groupby('Player Name').last().reset_index()
+    active_player_names = latest_player_snapshots[latest_player_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)]['Player Name'].tolist()
+    
+    # Slice full historical log to include ONLY the records belonging to currently active players
+    active_df = full_corp_history[full_corp_history['Player Name'].isin(active_player_names)].copy()
     
     if not full_corp_history.empty:
         tabs = st.tabs(["🏠 Overview", "🏆 All-Time", "📈 Weekly Gains", "🗓️ Monthly", "🗓️ Annual Leaderboards", "🏋️ true-grind-index", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
@@ -201,8 +207,7 @@ if not df.empty:
         # TAB 1: ALL-TIME LEADERBOARDS
         with tabs[1]:
             st.markdown('<div class="section-header">👑 All-Time Standings (Active Members Only)</div>', unsafe_allow_html=True)
-            latest_snapshots = full_corp_history.sort_values('Date').groupby('Player Name').last().reset_index()
-            current_snapshots = latest_snapshots[latest_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
+            current_snapshots = latest_player_snapshots[latest_player_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
             
             if not current_snapshots.empty:
                 current_snapshots['L_Rank'] = current_snapshots['Lvl'].rank(ascending=False, method='min')
@@ -360,12 +365,12 @@ if not df.empty:
             if not active_df.empty:
                 lvl_grind_df = active_df[~((active_df['Lvl'] >= 999) & (active_df['Lvl Gain'] == 0))]
                 
-                # Group by player for separate metric branches strictly using active dataset
+                # Group by player for separate metric branches strictly using the curated active dataset
                 lvl_avg = lvl_grind_df.groupby('Player Name')['Lvl Gain'].mean().reset_index().rename(columns={'Lvl Gain': 'Avg Lvl Gain'})
                 cv_avg = active_df.groupby('Player Name')['CV Gain'].mean().reset_index().rename(columns={'CV Gain': 'Avg CV Gain'})
                 dc_avg = active_df.groupby('Player Name')['DC Gain'].mean().reset_index().rename(columns={'DC Gain': 'Avg DC Gain'})
                 
-                # FIXED: Changed from 'outer' to 'inner' merge to ensure ONLY players in all tables (Active Only) pass through
+                # Merge the calculated active branches cleanly together
                 grind_df = lvl_avg.merge(cv_avg, on='Player Name', how='inner').merge(dc_avg, on='Player Name', how='inner').fillna(0)
                 
                 # Assign distinct leaderboard rankings based on clean averages
