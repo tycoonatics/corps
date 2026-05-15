@@ -358,7 +358,6 @@ if not df.empty:
             st.markdown('<div class="section-header">🏋️ True Grind Index (Historical Weekly Averages)</div>', unsafe_allow_html=True)
             
             if not active_df.empty:
-                # FIXED: Force filter to pull strictly from active players only, then filter out capped zeros
                 lvl_grind_df = active_df[~((active_df['Lvl'] >= 999) & (active_df['Lvl Gain'] == 0))]
                 
                 # Group by player for separate metric branches strictly using active dataset
@@ -366,8 +365,8 @@ if not df.empty:
                 cv_avg = active_df.groupby('Player Name')['CV Gain'].mean().reset_index().rename(columns={'CV Gain': 'Avg CV Gain'})
                 dc_avg = active_df.groupby('Player Name')['DC Gain'].mean().reset_index().rename(columns={'DC Gain': 'Avg DC Gain'})
                 
-                # Re-merge the calculated branches cleanly back together
-                grind_df = lvl_avg.merge(cv_avg, on='Player Name', how='outer').merge(dc_avg, on='Player Name', how='outer').fillna(0)
+                # FIXED: Changed from 'outer' to 'inner' merge to ensure ONLY players in all tables (Active Only) pass through
+                grind_df = lvl_avg.merge(cv_avg, on='Player Name', how='inner').merge(dc_avg, on='Player Name', how='inner').fillna(0)
                 
                 # Assign distinct leaderboard rankings based on clean averages
                 grind_df['L_Grind_Rank'] = grind_df['Avg Lvl Gain'].rank(ascending=False, method='min')
