@@ -110,7 +110,11 @@ def load_mapped_data():
 df, stats_ws, player_map, status_map, corp_map = load_mapped_data()
 
 def format_table(dataframe, columns):
-    return dataframe.style.format({col: "{:,.0f}" for col in columns})
+    # Ensure Rank is formatted as an integer without commas/decimals
+    format_dict = {col: "{:,.0f}" for col in columns}
+    if 'Rank' in dataframe.columns:
+        format_dict['Rank'] = "{:.0f}"
+    return dataframe.style.format(format_dict)
 
 # --- 4. APP DASHBOARD ---
 if not df.empty:
@@ -144,48 +148,50 @@ if not df.empty:
             week_data = active_df[active_df['Date'] == sel_week_dt].copy()
 
             if not week_data.empty:
+                # Add Ranks for leaderboards
+                week_data['Lvl Rank'] = week_data['Lvl Gain'].rank(ascending=False, method='min')
+                week_data['CV Rank'] = week_data['CV Gain'].rank(ascending=False, method='min')
+                week_data['DC Rank'] = week_data['DC Gain'].rank(ascending=False, method='min')
+
                 st.markdown('<div class="section-header">🏅 Weekly Performance Awards</div>', unsafe_allow_html=True)
                 a_col1, a_col2 = st.columns(2)
 
-                # Award 1: Rookie of the Week
-                # Filter bottom 35% of Player Levels
+                # Rookie of the Week logic
                 lvl_threshold = week_data['Lvl'].quantile(0.35)
                 rookies = week_data[week_data['Lvl'] <= lvl_threshold]
-                
                 if not rookies.empty:
-                    # Winner is rookie with highest DC Gain
                     rookie_winner = rookies.sort_values('DC Gain', ascending=False).iloc[0]
                     with a_col1:
                         st.markdown(f"""<div class="award-card">
                             <h3 style="margin:0; color:#ffd700;">🐣 Rookie of the Week</h3>
                             <h1 style="margin:15px 0; font-size: 2.5rem;">{rookie_winner['Player Name']}</h1>
-                            <p style="margin:0; color:#94a3b8; font-size: 1.1rem;">Top DC among players ≤ Lvl {int(lvl_threshold)}</p>
+                            <p style="margin:0; color:#94a3b8;">Highest DC Gain among players ≤ Lvl {int(lvl_threshold)}</p>
                         </div>""", unsafe_allow_html=True)
 
-                # Award 2: Rising Star
-                # Combined Ranks (Lower score is better)
-                week_data['R_Lvl'] = week_data['Lvl Gain'].rank(ascending=False, method='min')
-                week_data['R_CV'] = week_data['CV Gain'].rank(ascending=False, method='min')
-                week_data['R_DC'] = week_data['DC Gain'].rank(ascending=False, method='min')
-                week_data['Total_Rank_Score'] = week_data['R_Lvl'] + week_data['R_CV'] + week_data['R_DC']
-                
-                # Tie-breaker: If rank scores are same, person with more DC Gain wins
-                rising_winner = week_data.sort_values(['Total_Rank_Score', 'DC Gain'], ascending=[True, False]).iloc[0]
+                # Rising Star logic (Tie-breaker: DC Gain)
+                week_data['RS_Score'] = week_data['Lvl Rank'] + week_data['CV Rank'] + week_data['DC Rank']
+                rising_winner = week_data.sort_values(['RS_Score', 'DC Gain'], ascending=[True, False]).iloc[0]
                 with a_col2:
                     st.markdown(f"""<div class="award-card">
                         <h3 style="margin:0; color:#ffd700;">🚀 Rising Star</h3>
                         <h1 style="margin:15px 0; font-size: 2.5rem;">{rising_winner['Player Name']}</h1>
-                        <p style="margin:0; color:#94a3b8; font-size: 1.1rem;">Best consistent growth across all domains</p>
+                        <p style="margin:0; color:#94a3b8;">Best combined rank (Score: {int(rising_winner['RS_Score'])})</p>
                     </div>""", unsafe_allow_html=True)
 
                 st.markdown('<div class="section-header">📊 Weekly Leaderboards</div>', unsafe_allow_html=True)
                 w1, w2, w3 = st.columns(3)
-                w1.subheader("📈 Lvl Gain")
-                w1.dataframe(format_table(week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True, use_container_width=True)
-                w2.subheader("💰 CV Gain")
-                w2.dataframe(format_table(week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False), ['CV Gain']), hide_index=True, use_container_width=True)
-                w3.subheader("💫 DC Gain")
-                w3.dataframe(format_table(week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True, use_container_width=True)
+                
+                with w1:
+                    st.subheader("📈 Lvl Rank")
+                    st.dataframe(format_table(week_data[['Lvl Rank', 'Player Name', 'Lvl Gain']].sort_values('Lvl Rank'), ['Lvl Gain']), hide_index=True, use_container_width=True)
+                
+                with w2:
+                    st.subheader("💰 CV Rank")
+                    st.dataframe(format_table(week_data[['CV Rank', 'Player Name', 'CV Gain']].sort_values('CV Rank'), ['CV Gain']), hide_index=True, use_container_width=True)
+                
+                with w3:
+                    st.subheader("💫 DC Rank")
+                    st.dataframe(format_table(week_data[['DC Rank', 'Player Name', 'DC Gain']].sort_values('DC Rank'), ['DC Gain']), hide_index=True, use_container_width=True)
 
         # TAB 2: HALL OF FAME
         with tabs[2]:
