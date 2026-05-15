@@ -38,6 +38,14 @@ st.markdown("""
         margin-top: 25px;
         color: #1e293b;
     }
+    .award-card {
+        background: rgba(255, 215, 0, 0.1);
+        border: 1px solid #ffd700;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -129,11 +137,48 @@ if not df.empty:
             m4.metric("Total Donations", f"{latest_df['DC'].sum():,.0f}")
             st.dataframe(format_table(latest_df[['Player Name', 'Lvl', 'CV', 'DC']], ['Lvl', 'CV', 'DC']), hide_index=True, use_container_width=True)
 
-        # TAB 1: WEEKLY GAINS
+        # TAB 1: WEEKLY GAINS & AWARDS
         with tabs[1]:
             all_weeks = sorted(active_df['Date'].unique(), reverse=True)
-            sel_week = st.selectbox("Select Week:", [d.strftime("%Y-%m-%d") for d in all_weeks])
-            week_data = active_df[active_df['Date'] == pd.to_datetime(sel_week)]
+            sel_week_str = st.selectbox("Select Week:", [d.strftime("%Y-%m-%d") for d in all_weeks])
+            sel_week_dt = pd.to_datetime(sel_week_str)
+            week_data = active_df[active_df['Date'] == sel_week_dt].copy()
+
+            # --- AWARDS CALCULATION ---
+            st.markdown('<div class="section-header">🏅 Weekly Performance Awards</div>', unsafe_allow_html=True)
+            a_col1, a_col2 = st.columns(2)
+
+            # Award 1: Rookie of the Week
+            # Filter bottom 35% of Player Levels (Lvl)
+            threshold = week_data['Lvl'].quantile(0.35)
+            rookies = week_data[week_data['Lvl'] <= threshold]
+            
+            if not rookies.empty:
+                rookie_winner = rookies.sort_values('DC Gain', ascending=False).iloc[0]
+                with a_col1:
+                    st.markdown(f"""<div class="award-card">
+                        <h3 style="margin:0; color:#ffd700;">🐣 Rookie of the Week</h3>
+                        <h2 style="margin:10px 0;">{rookie_winner['Player Name']}</h2>
+                        <p style="margin:0; color:#94a3b8;">Highest DC Gain in bottom 35% Lvl</p>
+                    </div>""", unsafe_allow_html=True)
+            
+            # Award 2: Rising Star
+            # Calculate ranks (highest gain = rank 1)
+            week_data['Lvl_Rank'] = week_data['Lvl Gain'].rank(ascending=False, method='min')
+            week_data['CV_Rank'] = week_data['CV Gain'].rank(ascending=False, method='min')
+            week_data['DC_Rank'] = week_data['DC Gain'].rank(ascending=False, method='min')
+            week_data['Rising_Star_Score'] = week_data['Lvl_Rank'] + week_data['CV_Rank'] + week_data['DC_Rank']
+            
+            rising_winner = week_data.sort_values('Rising_Star_Score', ascending=True).iloc[0]
+            with a_col2:
+                st.markdown(f"""<div class="award-card">
+                    <h3 style="margin:0; color:#ffd700;">🚀 Rising Star</h3>
+                    <h2 style="margin:10px 0;">{rising_winner['Player Name']}</h2>
+                    <p style="margin:0; color:#94a3b8;">Lowest combined rank across all domains</p>
+                </div>""", unsafe_allow_html=True)
+
+            # Leaderboards
+            st.markdown('<div class="section-header">📊 Gain Leaderboards</div>', unsafe_allow_html=True)
             w1, w2, w3 = st.columns(3)
             w1.subheader("📈 Lvl Gain")
             w1.dataframe(format_table(week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True, use_container_width=True)
