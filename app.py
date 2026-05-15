@@ -9,51 +9,34 @@ import plotly.express as px
 import calendar
 
 # --- 1. PAGE CONFIGURATION ---
-st.set_page_config(page_title="RCTT Corporation Hub", page_icon="🏆", layout="wide")
+st.set_page_config(page_title="MPG RC Tycoons Hub", page_icon="🏆", layout="wide")
 
 # --- 2. CSS STYLING ---
 st.markdown("""
     <style>
     .main-header {
         background: linear-gradient(90deg, #ff8c00, #ff0080);
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-        color: white;
-        font-family: 'Arial Black', sans-serif;
-        font-size: 2rem;
-        margin-bottom: 30px;
+        padding: 20px; border-radius: 15px; text-align: center;
+        color: white; font-family: 'Arial Black', sans-serif; font-size: 2rem; margin-bottom: 30px;
     }
     div[data-testid="stMetric"] {
-        background-color: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 15px;
-        border-radius: 10px;
+        background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 15px; border-radius: 10px;
     }
     .section-header {
-        background-color: #e2e8f0;
-        padding: 6px 12px;
-        border-radius: 4px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        margin-top: 25px;
-        color: #1e293b;
+        background-color: #e2e8f0; padding: 6px 12px; border-radius: 4px;
+        font-weight: bold; margin-bottom: 10px; margin-top: 25px; color: #1e293b;
     }
     .award-card {
-        background: rgba(255, 215, 0, 0.1);
-        border: 2px solid #ffd700;
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-        margin-bottom: 20px;
-        min-height: 160px;
+        background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700;
+        padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 20px; min-height: 160px;
     }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">🏆 MPG RC TYCOONS KNOWLEDGE HUB </div>', unsafe_allow_html=True)
 
-# --- 3. DATABASE CONNECTION & DATA SANITIZATION ---
+# --- 3. DATABASE & DATA PROCESSING ---
 @st.cache_data(ttl=5)
 def load_mapped_data():
     try:
@@ -86,17 +69,17 @@ def load_mapped_data():
             
         stats_df = stats_df.sort_values(['UID', 'Date'])
 
-        # SPIKE PROTECTION & GAINS
+        # Gains Calculation with Spike Protection
         stats_df['Days_Gap'] = stats_df.groupby('UID')['Date'].diff().dt.days
         for col in ['Lvl', 'CV', 'DC']:
             stats_df[f'{col}_Raw_Diff'] = stats_df.groupby('UID')[col].diff()
-            def sanitize_gains(row, column):
+            def sanitize(row, column):
                 diff, gap = row[f'{column}_Raw_Diff'], row['Days_Gap']
                 if pd.isna(diff) or diff < 0 or gap > 10: return 0
                 if column == 'DC' and diff > 150000: return 0
                 if column == 'CV' and diff > 100000: return 0
                 return diff
-            stats_df[f'{col} Gain'] = stats_df.apply(lambda r: sanitize_gains(r, col), axis=1).fillna(0)
+            stats_df[f'{col} Gain'] = stats_df.apply(lambda r: sanitize(r, col), axis=1).fillna(0)
             
         return stats_df, raw_stats_ws, player_map, status_map, corp_map
     except Exception as e:
@@ -108,7 +91,7 @@ df, stats_ws, player_map, status_map, corp_map = load_mapped_data()
 def format_table(dataframe, columns):
     f_dict = {col: "{:,.0f}" for col in columns}
     for c in dataframe.columns:
-        if 'Rank' in c or c == 'Lvl' or c == 'Weeks':
+        if any(x in c for x in ['Rank', 'Lvl', 'Weeks', 'Top 3', '1,000+']):
             f_dict[c] = "{:.0f}"
     return dataframe.style.format(f_dict)
 
@@ -154,56 +137,47 @@ if not df.empty:
                     a1.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🐣 Rookie of the Week</h3><h1>{rw["Player Name"]}</h1><p>Top DC among players ≤ Lvl {int(lvl_cut)}</p></div>', unsafe_allow_html=True)
                 week_data['RS'] = week_data['Lvl Rank'] + week_data['CV Rank'] + week_data['DC Rank']
                 rsw = week_data.sort_values(['RS', 'DC Gain'], ascending=[True, False]).iloc[0]
-                a2.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🚀 Rising Star</h3><h1>{rsw["Player Name"]}</h1><p>Best combined domain ranking</p></div>', unsafe_allow_html=True)
+                a2.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🚀 Rising Star</h3><h1>{rsw["Player Name"]}</h1></div>', unsafe_allow_html=True)
                 w1, w2, w3 = st.columns(3)
                 w1.dataframe(format_table(week_data[['Lvl Rank', 'Player Name', 'Lvl Gain']].sort_values('Lvl Rank'), ['Lvl Gain']), hide_index=True)
                 w2.dataframe(format_table(week_data[['CV Rank', 'Player Name', 'CV Gain']].sort_values('CV Rank'), ['CV Gain']), hide_index=True)
                 w3.dataframe(format_table(week_data[['DC Rank', 'Player Name', 'DC Gain']].sort_values('DC Rank'), ['DC Gain']), hide_index=True)
 
-        # TAB 2: MONTHLY LEADERBOARDS
+        # TAB 2: MONTHLY
         with tabs[2]:
             st.markdown('<div class="section-header">🗓️ Monthly Performance & Awards</div>', unsafe_allow_html=True)
             active_df['Month_Key'] = active_df['Date'].dt.to_period('M')
-            month_options = sorted(active_df['Month_Key'].unique(), reverse=True)
-            sel_month_key = st.selectbox("Select Month:", month_options, format_func=lambda x: x.strftime('%B %Y'))
-            m_data = active_df[active_df['Month_Key'] == sel_month_key].copy()
-            
-            # Week Progress Logic
-            year, month = sel_month_key.year, sel_month_key.month
-            total_mondays = len([1 for i in calendar.monthcalendar(year, month) if i[0] != 0])
-            weeks_recorded = m_data['Date'].nunique()
-            is_month_complete = weeks_recorded >= total_mondays
-            st.write(f"**Month Progress:** {weeks_recorded} / {total_mondays} Weeks Recorded")
-
+            m_opts = sorted(active_df['Month_Key'].unique(), reverse=True)
+            sel_m = st.selectbox("Select Month:", m_opts, format_func=lambda x: x.strftime('%B %Y'))
+            m_data = active_df[active_df['Month_Key'] == sel_m].copy()
+            y, m = sel_m.year, sel_m.month
+            total_m = len([1 for i in calendar.monthcalendar(y, m) if i[0] != 0])
+            recorded = m_data['Date'].nunique()
+            st.write(f"**Month Progress:** {recorded} / {total_m} Weeks Recorded")
             if not m_data.empty:
                 m_totals = m_data.groupby('Player Name').agg({'Lvl Gain':'sum','CV Gain':'sum','DC Gain':'sum','Lvl':'min'}).reset_index()
-                if is_month_complete:
-                    st.markdown('<div class="section-header">🏆 Monthly Award Winners</div>', unsafe_allow_html=True)
+                if recorded >= total_m:
+                    st.markdown('<div class="section-header">🏆 Monthly Winners</div>', unsafe_allow_html=True)
                     ac1, ac2, ac3 = st.columns(3)
                     sr = m_totals.sort_values('Lvl Gain', ascending=False).iloc[0]
                     en = m_totals.sort_values('CV Gain', ascending=False).iloc[0]
                     mvp = m_totals.sort_values('DC Gain', ascending=False).iloc[0]
-                    ac1.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">👟 Speed Runner</h3><h1>{sr["Player Name"]}</h1><p>+{int(sr["Lvl Gain"])} Levels</p></div>', unsafe_allow_html=True)
-                    ac2.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🏢 Entrepreneurship</h3><h1>{en["Player Name"]}</h1><p>+${int(en["CV Gain"]):,}M CV</p></div>', unsafe_allow_html=True)
-                    ac3.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">⭐ MVP</h3><h1>{mvp["Player Name"]}</h1><p>{int(mvp["DC Gain"]):,} Donations</p></div>', unsafe_allow_html=True)
-                    
-                    # Rookie of the Month Logic
-                    f_date = m_data['Date'].min()
-                    f_players = active_df[active_df['Date'] == f_date]
-                    m_threshold = f_players['Lvl'].quantile(0.35)
-                    m_rookies = m_totals[m_totals['Lvl'] <= m_threshold]
-                    if not m_rookies.empty:
-                        rotm = m_rookies.sort_values('DC Gain', ascending=False).iloc[0]
-                        st.markdown(f'<div class="award-card" style="border-color:#00ffff;"><h3 style="color:#00ffff;">🐣 Rookie of the Month</h3><h1>{rotm["Player Name"]}</h1><p>Starting Lvl ≤ {int(m_threshold)}</p></div>', unsafe_allow_html=True)
-                else: st.info("💡 Monthly awards will be revealed once the month is complete.")
-                
+                    ac1.markdown(f'<div class="award-card"><h3>👟 Speed Runner</h3><h1>{sr["Player Name"]}</h1></div>', unsafe_allow_html=True)
+                    ac2.markdown(f'<div class="award-card"><h3>🏢 Entrepreneurship</h3><h1>{en["Player Name"]}</h1></div>', unsafe_allow_html=True)
+                    ac3.markdown(f'<div class="award-card"><h3>⭐ MVP</h3><h1>{mvp["Player Name"]}</h1></div>', unsafe_allow_html=True)
+                    f_wk = m_data['Date'].min()
+                    f_lvl = active_df[active_df['Date'] == f_wk]['Lvl'].quantile(0.35)
+                    m_rook = m_totals[m_totals['Lvl'] <= f_lvl].sort_values('DC Gain', ascending=False)
+                    if not m_rook.empty:
+                        rotm = m_rook.iloc[0]
+                        st.markdown(f'<div class="award-card" style="border-color:#00ffff;"><h3 style="color:#00ffff;">🐣 Rookie of the Month</h3><h1>{rotm["Player Name"]}</h1></div>', unsafe_allow_html=True)
                 m_totals['Lvl Rank'] = m_totals['Lvl Gain'].rank(ascending=False, method='min')
                 m_totals['CV Rank'] = m_totals['CV Gain'].rank(ascending=False, method='min')
                 m_totals['DC Rank'] = m_totals['DC Gain'].rank(ascending=False, method='min')
-                m_col1, m_col2, m_col3 = st.columns(3)
-                m_col1.dataframe(format_table(m_totals[['Lvl Rank', 'Player Name', 'Lvl Gain']].sort_values('Lvl Rank'), ['Lvl Gain']), hide_index=True)
-                m_col2.dataframe(format_table(m_totals[['CV Rank', 'Player Name', 'CV Gain']].sort_values('CV Rank'), ['CV Gain']), hide_index=True)
-                m_col3.dataframe(format_table(m_totals[['DC Rank', 'Player Name', 'DC Gain']].sort_values('DC Rank'), ['DC Gain']), hide_index=True)
+                mc1, mc2, mc3 = st.columns(3)
+                mc1.dataframe(format_table(m_totals[['Lvl Rank', 'Player Name', 'Lvl Gain']].sort_values('Lvl Rank'), ['Lvl Gain']), hide_index=True)
+                mc2.dataframe(format_table(m_totals[['CV Rank', 'Player Name', 'CV Gain']].sort_values('CV Rank'), ['CV Gain']), hide_index=True)
+                mc3.dataframe(format_table(m_totals[['DC Rank', 'Player Name', 'DC Gain']].sort_values('DC Rank'), ['DC Gain']), hide_index=True)
 
         # TAB 3: HALL OF FAME
         with tabs[3]:
@@ -216,30 +190,46 @@ if not df.empty:
 
         # TAB 4: STREAKS
         with tabs[4]:
-            st.markdown('<div class="section-header">🔥 Participation Streaks</div>', unsafe_allow_html=True)
-            d_wks = sorted(active_df['Date'].unique(), reverse=True)
-            s_list = []
-            for uid in active_df['UID'].unique():
-                p_dates = set(active_df[active_df['UID'] == uid]['Date'])
-                c = 0
-                for w in d_wks:
-                    if w in p_dates: c += 1
+            st.markdown('<div class="section-header">🔥 Elite Performance Streaks</div>', unsafe_allow_html=True)
+            def get_streak(p_hist, col):
+                s = 0
+                for val in p_hist.sort_values('Date', ascending=False)[col]:
+                    if val: s += 1
                     else: break
-                s_list.append({"Player Name": active_df[active_df['UID']==uid]['Player Name'].iloc[0], "Weeks": c})
-            st.dataframe(format_table(pd.DataFrame(s_list).sort_values("Weeks", ascending=False), ["Weeks"]), hide_index=True)
+                return s
+            s_data = active_df.copy()
+            s_data['L3'] = s_data.groupby('Date')['Lvl Gain'].rank(ascending=False, method='min') <= 3
+            s_data['C3'] = s_data.groupby('Date')['CV Gain'].rank(ascending=False, method='min') <= 3
+            s_data['D1K'] = s_data['DC Gain'] >= 1000
+            
+            # Award logic (simplified for streak scan)
+            s_data['is_RS'] = False # Logic can be expanded based on Tab 1
+            s_data['is_RotW'] = False 
+
+            final_s = []
+            for uid in s_data['UID'].unique():
+                p_h = s_data[s_data['UID'] == uid]
+                final_s.append({
+                    "Player Name": p_h['Player Name'].iloc[0],
+                    "Lvl Top 3": get_streak(p_h, 'L3'),
+                    "CV Top 3": get_streak(p_h, 'C3'),
+                    "1,000+ DC": get_streak(p_h, 'D1K'),
+                    "RotW": get_streak(p_h, 'is_RotW'),
+                    "Rising Star": get_streak(p_h, 'is_RS')
+                })
+            st.dataframe(format_table(pd.DataFrame(final_s).sort_values("1,000+ DC", ascending=False), 
+                         ["Lvl Top 3", "CV Top 3", "1,000+ DC", "RotW", "Rising Star"]), hide_index=True, use_container_width=True)
 
         # TAB 5: PROFILES
         with tabs[5]:
             p_status = full_corp_history.drop_duplicates(subset=['Player Name'], keep='last')[['Player Name', 'Status']].sort_values(['Status', 'Player Name'])
             sel_p = st.selectbox("Search Member:", p_status['Player Name'].tolist(), key="p_sel")
             p_hist = full_corp_history[full_corp_history['Player Name'] == sel_p].sort_values('Date')
-            all_d = pd.date_range(start=p_hist['Date'].min(), end=p_hist['Date'].max(), freq='W-MON')
-            p_hist_f = pd.DataFrame({'Date': all_d}).merge(p_hist, on='Date', how='left')
-            st.plotly_chart(px.line(p_hist_f, x='Date', y='Lvl Gain', title="Progression").update_traces(connectgaps=False))
+            st.plotly_chart(px.line(p_hist, x='Date', y='Lvl Gain', markers=True))
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Status", p_hist['Status'].iloc[-1])
-            m2.metric("Total Lvl Gain", f"+{int(p_hist['Lvl Gain'].sum()):,}")
-            m3.metric("Avg Weekly DC", f"+{int(p_hist[p_hist['DC Gain']>0]['DC Gain'].mean() if not p_hist[p_hist['DC Gain']>0].empty else 0):,}")
+            m2.metric("Total Lvl", f"+{int(p_hist['Lvl Gain'].sum()):,}")
+            m3.metric("Avg DC", f"{int(p_hist[p_hist['DC Gain']>0]['DC Gain'].mean() if not p_hist[p_hist['DC Gain']>0].empty else 0):,}")
             m4.metric("Total DC", f"{int(p_hist['DC Gain'].sum()):,}")
 
         # TAB 6: ADMIN
@@ -248,10 +238,10 @@ if not df.empty:
                 with st.form("add_log"):
                     f1, f2 = st.columns(2)
                     d, u, c = f1.date_input("Date", date.today()), f1.text_input("UID"), f2.text_input("Corp ID", "CORP_001")
-                    l, cv, dc = f2.number_input("Lvl", 1, 999, 100), f1.number_input("CV (M)", 0, 1000000, 1000), f2.number_input("Donations", 0, 1000000, 0)
+                    l, cv, dc = f2.number_input("Lvl", 1, 999, 100), f1.number_input("CV (M)", 0, 1000000, 1000), f2.number_input("DC", 0, 1000000, 0)
                     if st.form_submit_button("Commit"):
                         stats_ws.append_row([str(d), c, u, int(l), int(cv), int(dc)])
                         st.cache_data.clear()
                         st.rerun()
-    else: st.warning("No data found for this selection.")
-else: st.info("Awaiting connection to database...")
+    else: st.warning("No data found.")
+else: st.info("Awaiting connection...")
