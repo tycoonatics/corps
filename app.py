@@ -228,9 +228,16 @@ if not df.empty:
                     'D_Rank': 'DC Rank'
                 }, inplace=True)
                 
+                # Apply standard column numeric styles
                 styled_master = format_table(master_board, ['Lvl', 'CV', 'DC'])
                 
-                # Streamlit dataframe grouping and custom highlight configuration
+                # Safe fallback to highlight the 'Overall Rank' column via Pandas Styler
+                styled_master = styled_master.map(
+                    lambda v: 'background-color: rgba(147, 51, 234, 0.15); font-weight: bold;', 
+                    subset=['Overall Rank']
+                )
+                
+                # Streamlit dataframe grouping setup
                 st.dataframe(
                     styled_master,
                     hide_index=True,
@@ -238,8 +245,7 @@ if not df.empty:
                     column_config={
                         "Overall Rank": st.column_config.NumberColumn(
                             "🏅 Overall Rank",
-                            help="Highest overall standing based on combined ranks",
-                            background_color="rgba(147, 51, 234, 0.15)"
+                            help="Highest overall standing based on combined ranks"
                         ),
                         "Player Name": st.column_config.TextColumn("Player Name"),
                         "Lvl Rank": st.column_config.NumberColumn("📊 Lvl Rank"),
