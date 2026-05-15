@@ -221,7 +221,8 @@ if not df.empty:
     active_df = full_corp_history[full_corp_history['Player Name'].isin(active_player_names)].copy()
     
     if not full_corp_history.empty:
-        tabs = st.tabs(["🏠 Overview", "🏆 All-Time", "📈 Weekly Gains", "🗓️ Monthly", "🗓️ Annual Leaderboards", "🏋️ true-grind-index", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
+        # Refactored Core App Tabs to wrap Leaderboards together
+        tabs = st.tabs(["🏠 Overview", "🏆 Leaderboards", "🏋️ true-grind-index", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
 
         # TAB 0: OVERVIEW
         with tabs[0]:
@@ -235,162 +236,172 @@ if not df.empty:
             m4.metric("Total Donations", f"{latest_df['DC'].sum():,.0f}")
             st.dataframe(format_table_absolute(latest_df[['Player Name', 'Lvl', 'CV', 'DC']], ['Lvl', 'CV', 'DC']), hide_index=True, use_container_width=True)
 
-        # TAB 1: ALL-TIME LEADERBOARDS
+        # TAB 1: LEADERBOARDS HUB (ALL-TIME, WEEKLY, MONTHLY, ANNUAL SUB-VIEWS)
         with tabs[1]:
-            st.markdown('<div class="section-header">👑 All-Time Standings (Active Members Only)</div>', unsafe_allow_html=True)
-            current_snapshots = latest_player_snapshots[latest_player_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
-            
-            if not current_snapshots.empty:
-                current_snapshots['L_Rank'] = current_snapshots['Lvl'].rank(ascending=False, method='min')
-                current_snapshots['C_Rank'] = current_snapshots['CV'].rank(ascending=False, method='min')
-                current_snapshots['D_Rank'] = current_snapshots['DC'].rank(ascending=False, method='min')
-                current_snapshots['Rank_Sum'] = current_snapshots['L_Rank'] + current_snapshots['C_Rank'] + current_snapshots['D_Rank']
-                current_snapshots['Overall_Rank'] = current_snapshots['Rank_Sum'].rank(ascending=True, method='min')
-                
-                st.markdown('<div class="domain-header overall-bg">👑 Master Overall Standings</div>', unsafe_allow_html=True)
-                master_board = current_snapshots[['Overall_Rank', 'Player Name', 'L_Rank', 'Lvl', 'C_Rank', 'CV', 'D_Rank', 'DC']].sort_values('Overall_Rank')
-                master_board.rename(columns={'Overall_Rank': 'Overall Rank', 'L_Rank': 'Lvl Rank', 'C_Rank': 'CV Rank', 'D_Rank': 'DC Rank'}, inplace=True)
-                
-                styled_master = format_table_absolute(master_board, ['Lvl', 'CV', 'DC'])
-                styled_master = styled_master.map(lambda v: 'background-color: rgba(147, 51, 234, 0.15); font-weight: bold;', subset=['Overall Rank'])
-                
-                st.dataframe(
-                    styled_master,
-                    hide_index=True,
-                    use_container_width=True,
-                    column_config={
-                        "Overall Rank": st.column_config.NumberColumn("🏅 Overall Rank"),
-                        "Player Name": st.column_config.TextColumn("Player Name"),
-                        "Lvl Rank": st.column_config.NumberColumn("📊 Lvl Rank"),
-                        "Lvl": st.column_config.NumberColumn("Lvl    |"),
-                        "CV Rank": st.column_config.NumberColumn("💰 CV Rank"),
-                        "CV": st.column_config.NumberColumn("CV (M)    |"),
-                        "DC Rank": st.column_config.NumberColumn("🎁 DC Rank"),
-                        "DC": st.column_config.NumberColumn("Total DC")
-                    }
-                )
-                
-                al_c1, al_c2, al_c3 = st.columns(3)
-                with al_c1:
-                    st.markdown('<div class="domain-header lvl-bg">📈 All-Time Level (Lvl)</div>', unsafe_allow_html=True)
-                    al_lvl = current_snapshots[['L_Rank', 'Player Name', 'Lvl']].sort_values('L_Rank')
-                    al_lvl.rename(columns={'L_Rank': 'Rank'}, inplace=True)
-                    st.dataframe(format_table_absolute(al_lvl, ['Lvl']), hide_index=True, use_container_width=True)
-                with al_c2:
-                    st.markdown('<div class="domain-header cv-bg">💰 All-Time Company Value (CV)</div>', unsafe_allow_html=True)
-                    al_cv = current_snapshots[['C_Rank', 'Player Name', 'CV']].sort_values('C_Rank')
-                    al_cv.rename(columns={'C_Rank': 'Rank'}, inplace=True)
-                    st.dataframe(format_table_absolute(al_cv, ['CV']), hide_index=True, use_container_width=True)
-                with al_c3:
-                    st.markdown('<div class="domain-header dc-bg">🎁 All-Time Donations (DC)</div>', unsafe_allow_html=True)
-                    al_dc = current_snapshots[['D_Rank', 'Player Name', 'DC']].sort_values('D_Rank')
-                    al_dc.rename(columns={'D_Rank': 'Rank'}, inplace=True)
-                    st.dataframe(format_table_absolute(al_dc, ['DC']), hide_index=True, use_container_width=True)
+            # Sub-navigation layout inside the Leaderboard Hub Tab
+            board_view = st.radio(
+                "Select Leaderboard Filter Scope:",
+                ["👑 All-Time Standings", "📈 Weekly Performance", "🗓️ Monthly Summary", "📅 Annual Growth"],
+                horizontal=True
+            )
+            st.markdown("---")
 
-        # TAB 2: WEEKLY GAINS
+            # SUB-VIEW A: ALL-TIME STANDINGS
+            if board_view == "👑 All-Time Standings":
+                st.markdown('<div class="section-header">👑 All-Time Standings (Active Members Only)</div>', unsafe_allow_html=True)
+                current_snapshots = latest_player_snapshots[latest_player_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
+                
+                if not current_snapshots.empty:
+                    current_snapshots['L_Rank'] = current_snapshots['Lvl'].rank(ascending=False, method='min')
+                    current_snapshots['C_Rank'] = current_snapshots['CV'].rank(ascending=False, method='min')
+                    current_snapshots['D_Rank'] = current_snapshots['DC'].rank(ascending=False, method='min')
+                    current_snapshots['Rank_Sum'] = current_snapshots['L_Rank'] + current_snapshots['C_Rank'] + current_snapshots['D_Rank']
+                    current_snapshots['Overall_Rank'] = current_snapshots['Rank_Sum'].rank(ascending=True, method='min')
+                    
+                    st.markdown('<div class="domain-header overall-bg">👑 Master Overall Standings</div>', unsafe_allow_html=True)
+                    master_board = current_snapshots[['Overall_Rank', 'Player Name', 'L_Rank', 'Lvl', 'C_Rank', 'CV', 'D_Rank', 'DC']].sort_values('Overall_Rank')
+                    master_board.rename(columns={'Overall_Rank': 'Overall Rank', 'L_Rank': 'Lvl Rank', 'C_Rank': 'CV Rank', 'D_Rank': 'DC Rank'}, inplace=True)
+                    
+                    styled_master = format_table_absolute(master_board, ['Lvl', 'CV', 'DC'])
+                    styled_master = styled_master.map(lambda v: 'background-color: rgba(147, 51, 234, 0.15); font-weight: bold;', subset=['Overall Rank'])
+                    
+                    st.dataframe(
+                        styled_master,
+                        hide_index=True,
+                        use_container_width=True,
+                        column_config={
+                            "Overall Rank": st.column_config.NumberColumn("🏅 Overall Rank"),
+                            "Player Name": st.column_config.TextColumn("Player Name"),
+                            "Lvl Rank": st.column_config.NumberColumn("📊 Lvl Rank"),
+                            "Lvl": st.column_config.NumberColumn("Lvl    |"),
+                            "CV Rank": st.column_config.NumberColumn("💰 CV Rank"),
+                            "CV": st.column_config.NumberColumn("CV (M)    |"),
+                            "DC Rank": st.column_config.NumberColumn("🎁 DC Rank"),
+                            "DC": st.column_config.NumberColumn("Total DC")
+                        }
+                    )
+                    
+                    al_c1, al_c2, al_c3 = st.columns(3)
+                    with al_c1:
+                        st.markdown('<div class="domain-header lvl-bg">📈 All-Time Level (Lvl)</div>', unsafe_allow_html=True)
+                        al_lvl = current_snapshots[['L_Rank', 'Player Name', 'Lvl']].sort_values('L_Rank')
+                        al_lvl.rename(columns={'L_Rank': 'Rank'}, inplace=True)
+                        st.dataframe(format_table_absolute(al_lvl, ['Lvl']), hide_index=True, use_container_width=True)
+                    with al_c2:
+                        st.markdown('<div class="domain-header cv-bg">💰 All-Time Company Value (CV)</div>', unsafe_allow_html=True)
+                        al_cv = current_snapshots[['C_Rank', 'Player Name', 'CV']].sort_values('C_Rank')
+                        al_cv.rename(columns={'C_Rank': 'Rank'}, inplace=True)
+                        st.dataframe(format_table_absolute(al_cv, ['CV']), hide_index=True, use_container_width=True)
+                    with al_c3:
+                        st.markdown('<div class="domain-header dc-bg">🎁 All-Time Donations (DC)</div>', unsafe_allow_html=True)
+                        al_dc = current_snapshots[['D_Rank', 'Player Name', 'DC']].sort_values('D_Rank')
+                        al_dc.rename(columns={'D_Rank': 'Rank'}, inplace=True)
+                        st.dataframe(format_table_absolute(al_dc, ['DC']), hide_index=True, use_container_width=True)
+
+            # SUB-VIEW B: WEEKLY GAINS
+            elif board_view == "📈 Weekly Performance":
+                all_weeks = sorted(active_df['Date'].unique(), reverse=True)
+                sel_week_str = st.selectbox("Select Week:", [d.strftime("%Y-%m-%d") for d in all_weeks], key="weekly_sel")
+                week_data = active_df[active_df['Date'] == pd.to_datetime(sel_week_str)].copy()
+                if not week_data.empty:
+                    st.markdown('<div class="section-header">🏅 Weekly Performance Awards</div>', unsafe_allow_html=True)
+                    rotw_w = week_data['RotW_Winner'].iloc[0]
+                    rs_w = week_data['RS_Winner'].iloc[0]
+                    a1, a2 = st.columns(2)
+                    if rotw_w:
+                        a1.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🐣 Rookie of the Week</h3><h1>{rotw_w}</h1></div>', unsafe_allow_html=True)
+                    a2.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🚀 Rising Star</h3><h1>{rs_w}</h1></div>', unsafe_allow_html=True)
+                    
+                    w1, w2, w3 = st.columns(3)
+                    with w1:
+                        st.markdown('<div class="domain-header lvl-bg">📈 Δ Level (Lvl)</div>', unsafe_allow_html=True)
+                        l_board = week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
+                        l_board.insert(0, 'Rank', l_board['Lvl Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(l_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
+                    with w2:
+                        st.markdown('<div class="domain-header cv-bg">💰 Δ Company Value (CV)</div>', unsafe_allow_html=True)
+                        c_board = week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
+                        c_board.insert(0, 'Rank', c_board['CV Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(c_board, ['CV Gain']), hide_index=True, use_container_width=True)
+                    with w3:
+                        st.markdown('<div class="domain-header dc-bg">🎁 Δ Donation Count (DC)</div>', unsafe_allow_html=True)
+                        d_board = week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
+                        d_board.insert(0, 'Rank', d_board['DC Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(d_board, ['DC Gain']), hide_index=True, use_container_width=True)
+
+            # SUB-VIEW C: MONTHLY SUMMARY
+            elif board_view == "🗓️ Monthly Summary":
+                st.markdown('<div class="section-header">🗓️ Monthly Performance & Awards</div>', unsafe_allow_html=True)
+                m_opts = sorted(active_df['Month_Key'].unique(), reverse=True)
+                sel_m = st.selectbox("Select Month:", m_opts, format_func=lambda x: x.strftime('%B %Y'))
+                m_data = active_df[active_df['Month_Key'] == sel_m].copy()
+                y, m = sel_m.year, sel_m.month
+                total_m = len([1 for i in calendar.monthcalendar(y, m) if i[0] != 0])
+                recorded = m_data['Date'].nunique()
+                st.write(f"**Month Progress:** {recorded} / {total_m} Weeks Recorded")
+                if not m_data.empty:
+                    m_totals = m_data.groupby('Player Name').agg({'Lvl Gain':'sum','CV Gain':'sum','DC Gain':'sum','Lvl':'min'}).reset_index()
+                    if recorded >= total_m:
+                        st.markdown('<div class="section-header">🏆 Monthly Winners</div>', unsafe_allow_html=True)
+                        ac1, ac2, ac3 = st.columns(3)
+                        sr = m_totals.sort_values('Lvl Gain', ascending=False).iloc[0]
+                        en = m_totals.sort_values('CV Gain', ascending=False).iloc[0]
+                        mvp = m_totals.sort_values('DC Gain', ascending=False).iloc[0]
+                        ac1.markdown(f'<div class="award-card"><h3>👟 Speed Runner</h3><h1>{sr["Player Name"]}</h1></div>', unsafe_allow_html=True)
+                        ac2.markdown(f'<div class="award-card"><h3>🏢 Entrepreneurship</h3><h1>{en["Player Name"]}</h1></div>', unsafe_allow_html=True)
+                        ac3.markdown(f'<div class="award-card"><h3>⭐ MVP</h3><h1>{mvp["Player Name"]}</h1></div>', unsafe_allow_html=True)
+                    
+                    mc1, mc2, mc3 = st.columns(3)
+                    with mc1:
+                        st.markdown('<div class="domain-header lvl-bg">📈 Δ Level (Lvl)</div>', unsafe_allow_html=True)
+                        ml_board = m_totals[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
+                        ml_board.insert(0, 'Rank', ml_board['Lvl Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(ml_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
+                    with mc2:
+                        st.markdown('<div class="domain-header cv-bg">💰 Δ Company Value (CV)</div>', unsafe_allow_html=True)
+                        mc_board = m_totals[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
+                        mc_board.insert(0, 'Rank', mc_board['CV Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(mc_board, ['CV Gain']), hide_index=True, use_container_width=True)
+                    with mc3:
+                        st.markdown('<div class="domain-header dc-bg">🎁 Δ Donation Count (DC)</div>', unsafe_allow_html=True)
+                        md_board = m_totals[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
+                        md_board.insert(0, 'Rank', md_board['DC Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(md_board, ['DC Gain']), hide_index=True, use_container_width=True)
+
+            # SUB-VIEW D: ANNUAL GROWTH
+            elif board_view == "📅 Annual Growth":
+                st.markdown('<div class="section-header">👑 Annual Growth Standings (Active Members)</div>', unsafe_allow_html=True)
+                available_years = sorted(active_df['Date'].dt.year.unique(), reverse=True)
+                if not available_years:
+                    available_years = [2026, 2025]
+                    
+                selected_year = st.selectbox("Select Calendar Year:", available_years, key="annual_year_sel")
+                annual_df = active_df[active_df['Date'].dt.year == selected_year].copy()
+                
+                if not annual_df.empty:
+                    annual_hof = annual_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
+                    
+                    h1, h2, h3 = st.columns(3)
+                    with h1:
+                        st.markdown(f'<div class="domain-header lvl-bg">📈 {selected_year} Total Δ Level</div>', unsafe_allow_html=True)
+                        h_lvl = annual_hof[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
+                        h_lvl.insert(0, 'Rank', h_lvl['Lvl Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(h_lvl, ['Lvl Gain']), hide_index=True, use_container_width=True)
+                    with h2:
+                        st.markdown(f'<div class="domain-header cv-bg">💰 {selected_year} Total Δ Company Value</div>', unsafe_allow_html=True)
+                        h_cv = annual_hof[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
+                        h_cv.insert(0, 'Rank', h_cv['CV Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(h_cv, ['CV Gain']), hide_index=True, use_container_width=True)
+                    with h3:
+                        st.markdown(f'<div class="domain-header dc-bg">🎁 {selected_year} Total Δ Donations</div>', unsafe_allow_html=True)
+                        h_dc = annual_hof[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
+                        h_dc.insert(0, 'Rank', h_dc['DC Gain'].rank(ascending=False, method='min'))
+                        st.dataframe(format_table_absolute(h_dc, ['DC Gain']), hide_index=True, use_container_width=True)
+                else:
+                    st.warning(f"No logged data records available for the year {selected_year}.")
+
+        # TAB 2: TRUE GRIND INDEX (AVERAGE WEEKLY PERFORMANCE)
         with tabs[2]:
-            all_weeks = sorted(active_df['Date'].unique(), reverse=True)
-            sel_week_str = st.selectbox("Select Week:", [d.strftime("%Y-%m-%d") for d in all_weeks], key="weekly_sel")
-            week_data = active_df[active_df['Date'] == pd.to_datetime(sel_week_str)].copy()
-            if not week_data.empty:
-                st.markdown('<div class="section-header">🏅 Weekly Performance Awards</div>', unsafe_allow_html=True)
-                rotw_w = week_data['RotW_Winner'].iloc[0]
-                rs_w = week_data['RS_Winner'].iloc[0]
-                a1, a2 = st.columns(2)
-                if rotw_w:
-                    a1.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🐣 Rookie of the Week</h3><h1>{rotw_w}</h1></div>', unsafe_allow_html=True)
-                a2.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🚀 Rising Star</h3><h1>{rs_w}</h1></div>', unsafe_allow_html=True)
-                
-                w1, w2, w3 = st.columns(3)
-                with w1:
-                    st.markdown('<div class="domain-header lvl-bg">📈 Δ Level (Lvl)</div>', unsafe_allow_html=True)
-                    l_board = week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
-                    l_board.insert(0, 'Rank', l_board['Lvl Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(l_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
-                with w2:
-                    st.markdown('<div class="domain-header cv-bg">💰 Δ Company Value (CV)</div>', unsafe_allow_html=True)
-                    c_board = week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
-                    c_board.insert(0, 'Rank', c_board['CV Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(c_board, ['CV Gain']), hide_index=True, use_container_width=True)
-                with w3:
-                    st.markdown('<div class="domain-header dc-bg">🎁 Δ Donation Count (DC)</div>', unsafe_allow_html=True)
-                    d_board = week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
-                    d_board.insert(0, 'Rank', d_board['DC Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(d_board, ['DC Gain']), hide_index=True, use_container_width=True)
-
-        # TAB 3: MONTHLY
-        with tabs[3]:
-            st.markdown('<div class="section-header">🗓️ Monthly Performance & Awards</div>', unsafe_allow_html=True)
-            m_opts = sorted(active_df['Month_Key'].unique(), reverse=True)
-            sel_m = st.selectbox("Select Month:", m_opts, format_func=lambda x: x.strftime('%B %Y'))
-            m_data = active_df[active_df['Month_Key'] == sel_m].copy()
-            y, m = sel_m.year, sel_m.month
-            total_m = len([1 for i in calendar.monthcalendar(y, m) if i[0] != 0])
-            recorded = m_data['Date'].nunique()
-            st.write(f"**Month Progress:** {recorded} / {total_m} Weeks Recorded")
-            if not m_data.empty:
-                m_totals = m_data.groupby('Player Name').agg({'Lvl Gain':'sum','CV Gain':'sum','DC Gain':'sum','Lvl':'min'}).reset_index()
-                if recorded >= total_m:
-                    st.markdown('<div class="section-header">🏆 Monthly Winners</div>', unsafe_allow_html=True)
-                    ac1, ac2, ac3 = st.columns(3)
-                    sr = m_totals.sort_values('Lvl Gain', ascending=False).iloc[0]
-                    en = m_totals.sort_values('CV Gain', ascending=False).iloc[0]
-                    mvp = m_totals.sort_values('DC Gain', ascending=False).iloc[0]
-                    ac1.markdown(f'<div class="award-card"><h3>👟 Speed Runner</h3><h1>{sr["Player Name"]}</h1></div>', unsafe_allow_html=True)
-                    ac2.markdown(f'<div class="award-card"><h3>🏢 Entrepreneurship</h3><h1>{en["Player Name"]}</h1></div>', unsafe_allow_html=True)
-                    ac3.markdown(f'<div class="award-card"><h3>⭐ MVP</h3><h1>{mvp["Player Name"]}</h1></div>', unsafe_allow_html=True)
-                
-                mc1, mc2, mc3 = st.columns(3)
-                with mc1:
-                    st.markdown('<div class="domain-header lvl-bg">📈 Δ Level (Lvl)</div>', unsafe_allow_html=True)
-                    ml_board = m_totals[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
-                    ml_board.insert(0, 'Rank', ml_board['Lvl Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(ml_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
-                with mc2:
-                    st.markdown('<div class="domain-header cv-bg">💰 Δ Company Value (CV)</div>', unsafe_allow_html=True)
-                    mc_board = m_totals[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
-                    mc_board.insert(0, 'Rank', mc_board['CV Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(mc_board, ['CV Gain']), hide_index=True, use_container_width=True)
-                with mc3:
-                    st.markdown('<div class="domain-header dc-bg">🎁 Δ Donation Count (DC)</div>', unsafe_allow_html=True)
-                    md_board = m_totals[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
-                    md_board.insert(0, 'Rank', md_board['DC Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(md_board, ['DC Gain']), hide_index=True, use_container_width=True)
-
-        # TAB 4: ANNUAL LEADERBOARDS
-        with tabs[4]:
-            st.markdown('<div class="section-header">👑 Annual Growth Standings (Active Members)</div>', unsafe_allow_html=True)
-            available_years = sorted(active_df['Date'].dt.year.unique(), reverse=True)
-            if not available_years:
-                available_years = [2026, 2025]
-                
-            selected_year = st.selectbox("Select Calendar Year:", available_years, key="annual_year_sel")
-            annual_df = active_df[active_df['Date'].dt.year == selected_year].copy()
-            
-            if not annual_df.empty:
-                annual_hof = annual_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
-                
-                h1, h2, h3 = st.columns(3)
-                with h1:
-                    st.markdown(f'<div class="domain-header lvl-bg">📈 {selected_year} Total Δ Level</div>', unsafe_allow_html=True)
-                    h_lvl = annual_hof[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
-                    h_lvl.insert(0, 'Rank', h_lvl['Lvl Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(h_lvl, ['Lvl Gain']), hide_index=True, use_container_width=True)
-                with h2:
-                    st.markdown(f'<div class="domain-header cv-bg">💰 {selected_year} Total Δ Company Value</div>', unsafe_allow_html=True)
-                    h_cv = annual_hof[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
-                    h_cv.insert(0, 'Rank', h_cv['CV Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(h_cv, ['CV Gain']), hide_index=True, use_container_width=True)
-                with h3:
-                    st.markdown(f'<div class="domain-header dc-bg">🎁 {selected_year} Total Δ Donations</div>', unsafe_allow_html=True)
-                    h_dc = annual_hof[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
-                    h_dc.insert(0, 'Rank', h_dc['DC Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table_absolute(h_dc, ['DC Gain']), hide_index=True, use_container_width=True)
-            else:
-                st.warning(f"No logged data records available for the year {selected_year}.")
-
-        # TAB 5: TRUE GRIND INDEX (AVERAGE WEEKLY PERFORMANCE)
-        with tabs[5]:
             st.markdown('<div class="section-header">🏋️ True Grind Index (Historical Weekly Averages)</div>', unsafe_allow_html=True)
             
             if not active_df.empty:
@@ -426,12 +437,11 @@ if not df.empty:
                     tg_dc.rename(columns={'D_Grind_Rank': 'Rank'}, inplace=True)
                     st.dataframe(format_table(tg_dc, ['Avg DC Gain']), hide_index=True, use_container_width=True)
 
-        # TAB 6: STREAKS
-        with tabs[6]:
+        # TAB 3: STREAKS
+        with tabs[3]:
             st.markdown('<div class="section-header">🔥 Elite Performance Streaks</div>', unsafe_allow_html=True)
             st.caption("Format: Active (Longest Ever)")
 
-            # Master dictionary map to assign strings cleanly
             metric_map = {
                 'L3': 'Δ Lvl',
                 'C3': 'Δ CV',
@@ -443,7 +453,6 @@ if not df.empty:
 
             max_corp_date = active_df['Date'].max()
 
-            # Main matrix loop summary build
             final_s = []
             all_historical_streaks = []
 
@@ -451,11 +460,9 @@ if not df.empty:
                 p_h = active_df[active_df['UID'] == uid]
                 p_name = p_h['Player Name'].iloc[0]
                 
-                # Capture structural timeline tracking metrics
                 history_metrics = {}
                 for col_key, label in metric_map.items():
                     history_metrics[col_key] = p_h.sort_values('Date', ascending=True)[col_key].tolist()
-                    # Gather comprehensive historical lists
                     extracted = calculate_streak_details(p_h, col_key, label, max_corp_date)
                     all_historical_streaks.extend(extracted)
 
@@ -487,24 +494,19 @@ if not df.empty:
             st.dataframe(s_df.sort_values("sort_val", ascending=False).drop(columns=['sort_val']), 
                          hide_index=True, use_container_width=True)
 
-            # --- SUB-TABLE SECTION: TOP ACTIVE & LONGEST STREAKS ---
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("---")
             
             if all_historical_streaks:
                 master_streak_df = pd.DataFrame(all_historical_streaks)
                 
-                # Build Leaderboard 1: Top Active Streaks
                 active_streaks_df = master_streak_df[master_streak_df['Is Active'] == True].copy()
                 active_streaks_df = active_streaks_df.sort_values('Weeks', ascending=False).head(10)
                 active_streaks_display = active_streaks_df[['Type', 'Name', 'Weeks', 'Start Date']].copy()
                 active_streaks_display['Start Date'] = active_streaks_display['Start Date'].dt.strftime('%m/%d/%Y')
                 active_streaks_display.rename(columns={'Type': 'TypeName', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date'}, inplace=True)
                 
-                # Build Leaderboard 2: Top Longest Historical Streaks
                 longest_streaks_df = master_streak_df.sort_values('Weeks', ascending=False).head(10).copy()
-                
-                # Dynamic conditional for End Date: swap out date for 'Streak Active!' text flag
                 longest_streaks_df['End Date Presentation'] = longest_streaks_df.apply(
                     lambda row: "Streak Active!" if row['Is Active'] else row['End Date'].strftime('%m/%d/%Y'), axis=1
                 )
@@ -514,7 +516,6 @@ if not df.empty:
                     columns={'Type': 'TypeName', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date', 'End Date Presentation': 'End Date'}
                 )
                 
-                # Output side-by-side matching columns
                 c_streak_1, c_streak_2 = st.columns(2)
                 with c_streak_1:
                     st.markdown('### 🔥 Top Active Streaks')
@@ -524,8 +525,8 @@ if not df.empty:
                     st.markdown('### 👑 Top Longest Streaks')
                     st.dataframe(longest_display, hide_index=True, use_container_width=True)
 
-        # TAB 7: PROFILES
-        with tabs[7]:
+        # TAB 4: PROFILES
+        with tabs[4]:
             p_status = full_corp_history.drop_duplicates(subset=['Player Name'], keep='last')[['Player Name', 'Status']].sort_values(['Status', 'Player Name'])
             sel_p = st.selectbox("Search Member:", p_status['Player Name'].tolist(), key="p_sel")
             p_hist = full_corp_history[full_corp_history['Player Name'] == sel_p].sort_values('Date')
@@ -574,8 +575,8 @@ if not df.empty:
                 st.write(f"⚡ **Rookie of the Week:** {get_longest_streak(p_chron['is_RotW'].tolist())} Weeks")
                 st.write(f"⚡ **Rising Star:** {get_longest_streak(p_chron['is_RS'].tolist())} Weeks")
 
-        # TAB 8: ADMIN
-        with tabs[8]:
+        # TAB 5: ADMIN
+        with tabs[5]:
             if st.text_input("Password:", type="password") == st.secrets.get("admin_password", "rcttaddict"):
                 with st.form("add_log"):
                     f1, f2 = st.columns(2)
