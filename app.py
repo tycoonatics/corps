@@ -67,7 +67,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header">🏆 MPG RC TYCOONS KNOWLEDGE HUB </div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">📊 RCT Touch Corp Analytics</div>', unsafe_allow_html=True)
 
 # --- 3. DATABASE & DATA PROCESSING ---
 @st.cache_data(ttl=5)
