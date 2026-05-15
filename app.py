@@ -102,11 +102,10 @@ if not df.empty:
     available_corps = sorted(df['Corp Name'].unique())
     selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
     
-    # GLOBAL FILTER: ONLY EVER SHOW ACTIVE MEMBERS (Except in Profiles)
+    # GLOBAL FILTER: ONLY SHOW ACTIVE MEMBERS (Main Tabs)
     active_df = df[df['Status'].astype(str).str.contains("Active", case=False, na=False)]
     corp_df = active_df[active_df['Corp Name'] == selected_corp_name].sort_values('Date', ascending=False)
     
-    # Safety check if no active members exist for a corp
     if not corp_df.empty:
         latest_date = corp_df['Date'].max()
         latest_df = corp_df[corp_df['Date'] == latest_date]
@@ -117,7 +116,7 @@ if not df.empty:
 
         # --- TAB 1: OVERVIEW ---
         with tab_overview:
-            st.markdown(f'<div class="section-header">📈 {selected_corp_name} Roster ({latest_date.date()})</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="section-header">📈 {selected_corp_name} Roster ({latest_date.strftime("%Y-%m-%d")})</div>', unsafe_allow_html=True)
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Active Roster", f"{len(latest_df)}")
             m2.metric("Avg Level", f"{latest_df['Lvl'].mean():.1f}")
@@ -137,15 +136,17 @@ if not df.empty:
         # --- TAB 2: WEEKLY LEADERBOARDS ---
         with tab_weekly:
             st.markdown('<div class="section-header">📅 Weekly Progress Leaderboards (Gains Only)</div>', unsafe_allow_html=True)
-            all_weeks = sorted(corp_df['Date'].unique(), reverse=True)
             
-            sel_week = st.selectbox(
-                "Select Week Starting:", 
-                all_weeks, 
-                format_func=lambda x: x.date() if hasattr(x, 'date') else x
-            )
+            # Use formatted strings for the selectbox to avoid serialization errors
+            all_weeks_dt = sorted(corp_df['Date'].unique(), reverse=True)
+            week_options = [dt.strftime("%Y-%m-%d") for dt in all_weeks_dt]
             
-            week_data = corp_df[corp_df['Date'] == sel_week]
+            sel_week_str = st.selectbox("Select Week Starting:", options=week_options)
+            
+            # Convert selected string back to datetime to filter data
+            sel_week_dt = pd.to_datetime(sel_week_str)
+            week_data = corp_df[corp_df['Date'] == sel_week_dt]
+            
             w_col1, w_col2, w_col3 = st.columns(3)
             
             with w_col1:
@@ -231,6 +232,6 @@ if not df.empty:
                         st.cache_data.clear()
                         st.rerun()
     else:
-        st.warning(f"No active members found for {selected_corp_name}. Check the Reference_Data sheet.")
+        st.warning(f"No active members found for {selected_corp_name}.")
 else:
-    st.info("Hub ready. Please ensure your Spreadsheet is connected and populated.")
+    st.info("Hub ready. Ensure Spreadsheet is populated.")
