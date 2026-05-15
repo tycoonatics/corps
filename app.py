@@ -122,6 +122,13 @@ def load_mapped_data():
 df, stats_ws, player_map, status_map, corp_map = load_mapped_data()
 
 def format_table(dataframe, columns):
+    f_dict = {col: "{:,.1f}" for col in columns}  # Adjusted to show decimal places for averages
+    for c in dataframe.columns:
+        if any(x in c for x in ['Rank', 'Weeks']):
+            f_dict[c] = "{:.0f}"
+    return dataframe.style.format(f_dict)
+
+def format_table_absolute(dataframe, columns):
     f_dict = {col: "{:,.0f}" for col in columns}
     for c in dataframe.columns:
         if any(x in c for x in ['Rank', 'Lvl', 'Weeks', 'Score']):
@@ -177,7 +184,7 @@ if not df.empty:
     active_df = full_corp_history[full_corp_history['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
     
     if not full_corp_history.empty:
-        tabs = st.tabs(["🏠 Overview", "🏆 All-Time", "📈 Weekly Gains", "🗓️ Monthly", "👑 Hall of Fame", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
+        tabs = st.tabs(["🏠 Overview", "🏆 All-Time", "📈 Weekly Gains", "🗓️ Monthly", "👑 Hall of Fame", "🏋️ true-grind-index", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
 
         # TAB 0: OVERVIEW
         with tabs[0]:
@@ -189,69 +196,34 @@ if not df.empty:
             m2.metric("Avg Level", f"{latest_df['Lvl'].mean():,.0f}")
             m3.metric("Total Value", f"${latest_df['CV'].sum():,.0f}M")
             m4.metric("Total Donations", f"{latest_df['DC'].sum():,.0f}")
-            st.dataframe(format_table(latest_df[['Player Name', 'Lvl', 'CV', 'DC']], ['Lvl', 'CV', 'DC']), hide_index=True, use_container_width=True)
+            st.dataframe(format_table_absolute(latest_df[['Player Name', 'Lvl', 'CV', 'DC']], ['Lvl', 'CV', 'DC']), hide_index=True, use_container_width=True)
 
         # TAB 1: ALL-TIME LEADERBOARDS
         with tabs[1]:
             st.markdown('<div class="section-header">👑 All-Time Standings (Active Members Only)</div>', unsafe_allow_html=True)
-            
-            # 1. Pull the most recent entry for each historical name record
             latest_snapshots = full_corp_history.sort_values('Date').groupby('Player Name').last().reset_index()
-            
-            # 2. Strict live lookup mapping: Filters out any player not actively marked "Active" right now
-            current_snapshots = latest_snapshots[
-                latest_snapshots['Player Name'].map(
-                    lambda name: str(status_map.get({v: k for k, v in player_map.items()}.get(name), "")).strip().lower() == "active"
-                )
-            ].copy()
+            current_snapshots = latest_snapshots[latest_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
             
             if not current_snapshots.empty:
-                # Compute discrete individual ranks
                 current_snapshots['L_Rank'] = current_snapshots['Lvl'].rank(ascending=False, method='min')
                 current_snapshots['C_Rank'] = current_snapshots['CV'].rank(ascending=False, method='min')
                 current_snapshots['D_Rank'] = current_snapshots['DC'].rank(ascending=False, method='min')
-                
-                # Performance aggregate tracking (Lowest rank sum wins)
                 current_snapshots['Rank_Sum'] = current_snapshots['L_Rank'] + current_snapshots['C_Rank'] + current_snapshots['D_Rank']
                 current_snapshots['Overall_Rank'] = current_snapshots['Rank_Sum'].rank(ascending=True, method='min')
                 
-                # Master Overall Leaderboard Display
                 st.markdown('<div class="domain-header overall-bg">👑 Master Overall Standings</div>', unsafe_allow_html=True)
+                master_board = current_snapshots[['Overall_Rank', 'Player Name', 'L_Rank', 'Lvl', 'C_Rank', 'CV', 'D_Rank', 'DC']].sort_values('Overall_Rank')
+                master_board.rename(columns={'Overall_Rank': 'Overall Rank', 'L_Rank': 'Lvl Rank', 'C_Rank': 'CV Rank', 'D_Rank': 'DC Rank'}, inplace=True)
                 
-                # Organize and align rank headers to the left of their metrics
-                master_board = current_snapshots[[
-                    'Overall_Rank', 'Player Name', 
-                    'L_Rank', 'Lvl', 
-                    'C_Rank', 'CV', 
-                    'D_Rank', 'DC'
-                ]].sort_values('Overall_Rank')
+                styled_master = format_table_absolute(master_board, ['Lvl', 'CV', 'DC'])
+                styled_master = styled_master.map(lambda v: 'background-color: rgba(147, 51, 234, 0.15); font-weight: bold;', subset=['Overall Rank'])
                 
-                master_board.rename(columns={
-                    'Overall_Rank': 'Overall Rank', 
-                    'L_Rank': 'Lvl Rank', 
-                    'C_Rank': 'CV Rank', 
-                    'D_Rank': 'DC Rank'
-                }, inplace=True)
-                
-                # Apply standard column numeric styles
-                styled_master = format_table(master_board, ['Lvl', 'CV', 'DC'])
-                
-                # Highlight the 'Overall Rank' column via Pandas Styler to avoid version-based column_config TypeErrors
-                styled_master = styled_master.map(
-                    lambda v: 'background-color: rgba(147, 51, 234, 0.15); font-weight: bold;', 
-                    subset=['Overall Rank']
-                )
-                
-                # Streamlit dataframe column alignment configuration and grouping dividers
                 st.dataframe(
                     styled_master,
                     hide_index=True,
                     use_container_width=True,
                     column_config={
-                        "Overall Rank": st.column_config.NumberColumn(
-                            "🏅 Overall Rank",
-                            help="Highest overall standing based on combined ranks"
-                        ),
+                        "Overall Rank": st.column_config.NumberColumn("🏅 Overall Rank"),
                         "Player Name": st.column_config.TextColumn("Player Name"),
                         "Lvl Rank": st.column_config.NumberColumn("📊 Lvl Rank"),
                         "Lvl": st.column_config.NumberColumn("Lvl    |"),
@@ -262,23 +234,22 @@ if not df.empty:
                     }
                 )
                 
-                # Segmented Column Sub-boards
                 al_c1, al_c2, al_c3 = st.columns(3)
                 with al_c1:
                     st.markdown('<div class="domain-header lvl-bg">📈 All-Time Level (Lvl)</div>', unsafe_allow_html=True)
                     al_lvl = current_snapshots[['L_Rank', 'Player Name', 'Lvl']].sort_values('L_Rank')
                     al_lvl.rename(columns={'L_Rank': 'Rank'}, inplace=True)
-                    st.dataframe(format_table(al_lvl, ['Lvl']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(al_lvl, ['Lvl']), hide_index=True, use_container_width=True)
                 with al_c2:
                     st.markdown('<div class="domain-header cv-bg">💰 All-Time Company Value (CV)</div>', unsafe_allow_html=True)
                     al_cv = current_snapshots[['C_Rank', 'Player Name', 'CV']].sort_values('C_Rank')
                     al_cv.rename(columns={'C_Rank': 'Rank'}, inplace=True)
-                    st.dataframe(format_table(al_cv, ['CV']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(al_cv, ['CV']), hide_index=True, use_container_width=True)
                 with al_c3:
                     st.markdown('<div class="domain-header dc-bg">🎁 All-Time Donations (DC)</div>', unsafe_allow_html=True)
                     al_dc = current_snapshots[['D_Rank', 'Player Name', 'DC']].sort_values('D_Rank')
                     al_dc.rename(columns={'D_Rank': 'Rank'}, inplace=True)
-                    st.dataframe(format_table(al_dc, ['DC']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(al_dc, ['DC']), hide_index=True, use_container_width=True)
 
         # TAB 2: WEEKLY GAINS
         with tabs[2]:
@@ -299,17 +270,17 @@ if not df.empty:
                     st.markdown('<div class="domain-header lvl-bg">📈 Δ Level (Lvl)</div>', unsafe_allow_html=True)
                     l_board = week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
                     l_board.insert(0, 'Rank', l_board['Lvl Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table(l_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(l_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
                 with w2:
                     st.markdown('<div class="domain-header cv-bg">💰 Δ Company Value (CV)</div>', unsafe_allow_html=True)
                     c_board = week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
                     c_board.insert(0, 'Rank', c_board['CV Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table(c_board, ['CV Gain']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(c_board, ['CV Gain']), hide_index=True, use_container_width=True)
                 with w3:
                     st.markdown('<div class="domain-header dc-bg">🎁 Δ Donation Count (DC)</div>', unsafe_allow_html=True)
                     d_board = week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
                     d_board.insert(0, 'Rank', d_board['DC Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table(d_board, ['DC Gain']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(d_board, ['DC Gain']), hide_index=True, use_container_width=True)
 
         # TAB 3: MONTHLY
         with tabs[3]:
@@ -338,17 +309,17 @@ if not df.empty:
                     st.markdown('<div class="domain-header lvl-bg">📈 Δ Level (Lvl)</div>', unsafe_allow_html=True)
                     ml_board = m_totals[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
                     ml_board.insert(0, 'Rank', ml_board['Lvl Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table(ml_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(ml_board, ['Lvl Gain']), hide_index=True, use_container_width=True)
                 with mc2:
                     st.markdown('<div class="domain-header cv-bg">💰 Δ Company Value (CV)</div>', unsafe_allow_html=True)
                     mc_board = m_totals[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
                     mc_board.insert(0, 'Rank', mc_board['CV Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table(mc_board, ['CV Gain']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(mc_board, ['CV Gain']), hide_index=True, use_container_width=True)
                 with mc3:
                     st.markdown('<div class="domain-header dc-bg">🎁 Δ Donation Count (DC)</div>', unsafe_allow_html=True)
                     md_board = m_totals[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
                     md_board.insert(0, 'Rank', md_board['DC Gain'].rank(ascending=False, method='min'))
-                    st.dataframe(format_table(md_board, ['DC Gain']), hide_index=True, use_container_width=True)
+                    st.dataframe(format_table_absolute(md_board, ['DC Gain']), hide_index=True, use_container_width=True)
 
         # TAB 4: HALL OF FAME
         with tabs[4]:
@@ -359,20 +330,55 @@ if not df.empty:
                 st.markdown('<div class="domain-header lvl-bg">📈 Lifetime Δ Level</div>', unsafe_allow_html=True)
                 h_lvl = hof[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
                 h_lvl.insert(0, 'Rank', h_lvl['Lvl Gain'].rank(ascending=False, method='min'))
-                st.dataframe(format_table(h_lvl, ['Lvl Gain']), hide_index=True, use_container_width=True)
+                st.dataframe(format_table_absolute(h_lvl, ['Lvl Gain']), hide_index=True, use_container_width=True)
             with h2:
                 st.markdown('<div class="domain-header cv-bg">💰 Lifetime Δ Company Value</div>', unsafe_allow_html=True)
                 h_cv = hof[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
                 h_cv.insert(0, 'Rank', h_cv['CV Gain'].rank(ascending=False, method='min'))
-                st.dataframe(format_table(h_cv, ['CV Gain']), hide_index=True, use_container_width=True)
+                st.dataframe(format_table_absolute(h_cv, ['CV Gain']), hide_index=True, use_container_width=True)
             with h3:
                 st.markdown('<div class="domain-header dc-bg">🎁 Lifetime Δ Donations</div>', unsafe_allow_html=True)
                 h_dc = hof[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
                 h_dc.insert(0, 'Rank', h_dc['DC Gain'].rank(ascending=False, method='min'))
-                st.dataframe(format_table(h_dc, ['DC Gain']), hide_index=True, use_container_width=True)
+                st.dataframe(format_table_absolute(h_dc, ['DC Gain']), hide_index=True, use_container_width=True)
 
-        # TAB 5: STREAKS
+        # TAB 5: TRUE GRIND INDEX (AVERAGE WEEKLY PERFORMANCE)
         with tabs[5]:
+            st.markdown('<div class="section-header">🏋️ True Grind Index (Historical Weekly Averages)</div>', unsafe_allow_html=True)
+            
+            # Calculate mean performance metrics for active members across all recorded sessions
+            grind_df = active_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].mean().reset_index()
+            
+            if not grind_df.empty:
+                grind_df.rename(columns={'Lvl Gain': 'Avg Lvl Gain', 'CV Gain': 'Avg CV Gain', 'DC Gain': 'Avg DC Gain'}, inplace=True)
+                
+                # Assign distinct leaderboard rankings
+                grind_df['L_Grind_Rank'] = grind_df['Avg Lvl Gain'].rank(ascending=False, method='min')
+                grind_df['C_Grind_Rank'] = grind_df['Avg CV Gain'].rank(ascending=False, method='min')
+                grind_df['D_Grind_Rank'] = grind_df['Avg DC Gain'].rank(ascending=False, method='min')
+                
+                tg_c1, tg_c2, tg_c3 = st.columns(3)
+                
+                with tg_c1:
+                    st.markdown('<div class="domain-header lvl-bg">📈 Avg Weekly Δ Level</div>', unsafe_allow_html=True)
+                    tg_lvl = grind_df[['L_Grind_Rank', 'Player Name', 'Avg Lvl Gain']].sort_values('L_Grind_Rank')
+                    tg_lvl.rename(columns={'L_Grind_Rank': 'Rank'}, inplace=True)
+                    st.dataframe(format_table(tg_lvl, ['Avg Lvl Gain']), hide_index=True, use_container_width=True)
+                    
+                with tg_c2:
+                    st.markdown('<div class="domain-header cv-bg">💰 Avg Weekly Δ Company Value</div>', unsafe_allow_html=True)
+                    tg_cv = grind_df[['C_Grind_Rank', 'Player Name', 'Avg CV Gain']].sort_values('C_Grind_Rank')
+                    tg_cv.rename(columns={'C_Grind_Rank': 'Rank'}, inplace=True)
+                    st.dataframe(format_table(tg_cv, ['Avg CV Gain']), hide_index=True, use_container_width=True)
+                    
+                with tg_c3:
+                    st.markdown('<div class="domain-header dc-bg">🎁 Avg Weekly Δ Donations</div>', unsafe_allow_html=True)
+                    tg_dc = grind_df[['D_Grind_Rank', 'Player Name', 'Avg DC Gain']].sort_values('D_Grind_Rank')
+                    tg_dc.rename(columns={'D_Grind_Rank': 'Rank'}, inplace=True)
+                    st.dataframe(format_table(tg_dc, ['Avg DC Gain']), hide_index=True, use_container_width=True)
+
+        # TAB 6: STREAKS
+        with tabs[6]:
             st.markdown('<div class="section-header">🔥 Elite Performance Streaks</div>', unsafe_allow_html=True)
             st.caption("Format: Active (Longest Ever)")
 
@@ -408,8 +414,8 @@ if not df.empty:
             st.dataframe(s_df.sort_values("sort_val", ascending=False).drop(columns=['sort_val']), 
                          hide_index=True, use_container_width=True)
 
-        # TAB 6: PROFILES
-        with tabs[6]:
+        # TAB 7: PROFILES
+        with tabs[7]:
             p_status = full_corp_history.drop_duplicates(subset=['Player Name'], keep='last')[['Player Name', 'Status']].sort_values(['Status', 'Player Name'])
             sel_p = st.selectbox("Search Member:", p_status['Player Name'].tolist(), key="p_sel")
             p_hist = full_corp_history[full_corp_history['Player Name'] == sel_p].sort_values('Date')
@@ -458,8 +464,8 @@ if not df.empty:
                 st.write(f"⚡ **Rookie of the Week:** {get_longest_streak(p_chron['is_RotW'].tolist())} Weeks")
                 st.write(f"⚡ **Rising Star:** {get_longest_streak(p_chron['is_RS'].tolist())} Weeks")
 
-        # TAB 7: ADMIN
-        with tabs[7]:
+        # TAB 8: ADMIN
+        with tabs[8]:
             if st.text_input("Password:", type="password") == st.secrets.get("admin_password", "rcttaddict"):
                 with st.form("add_log"):
                     f1, f2 = st.columns(2)
