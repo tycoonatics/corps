@@ -91,7 +91,7 @@ df, stats_ws, player_map, status_map, corp_map = load_mapped_data()
 def format_table(dataframe, columns):
     f_dict = {col: "{:,.0f}" for col in columns}
     for c in dataframe.columns:
-        if any(x in c for x in ['Rank', 'Lvl', 'Weeks', 'Top 3', '1,000+']):
+        if any(x in c for x in ['Rank', 'Lvl', 'Weeks']):
             f_dict[c] = "{:.0f}"
     return dataframe.style.format(f_dict)
 
@@ -191,12 +191,30 @@ if not df.empty:
         # TAB 4: STREAKS
         with tabs[4]:
             st.markdown('<div class="section-header">🔥 Elite Performance Streaks</div>', unsafe_allow_html=True)
-            def get_streak(p_hist, col):
-                s = 0
-                for val in p_hist.sort_values('Date', ascending=False)[col]:
-                    if val: s += 1
+            st.caption("Format: Active (Longest Ever)")
+
+            def get_streak_metrics(p_hist, col):
+                # Ensure sorted by date ascending for longest calculation
+                history = p_hist.sort_values('Date', ascending=True)[col].tolist()
+                active = 0
+                longest = 0
+                current_running = 0
+                
+                # Longest calculation
+                for val in history:
+                    if val:
+                        current_running += 1
+                        longest = max(longest, current_running)
+                    else:
+                        current_running = 0
+                
+                # Active calculation (scanning backwards from most recent)
+                for val in reversed(history):
+                    if val: active += 1
                     else: break
-                return s
+                
+                return f"{active} ({longest})"
+
             s_data = active_df.copy()
             s_data['L3'] = s_data.groupby('Date')['Lvl Gain'].rank(ascending=False, method='min') <= 3
             s_data['C3'] = s_data.groupby('Date')['CV Gain'].rank(ascending=False, method='min') <= 3
@@ -210,22 +228,26 @@ if not df.empty:
                 p_h = s_data[s_data['UID'] == uid]
                 final_s.append({
                     "Player Name": p_h['Player Name'].iloc[0],
-                    "Lvl Top 3": get_streak(p_h, 'L3'),
-                    "CV Top 3": get_streak(p_h, 'C3'),
-                    "DC Top 3": get_streak(p_h, 'D3'),
-                    "1,000+ DC": get_streak(p_h, 'D1K'),
-                    "RotW": get_streak(p_h, 'is_RotW'),
-                    "Rising Star": get_streak(p_h, 'is_RS')
+                    "Lvl Top 3": get_streak_metrics(p_h, 'L3'),
+                    "CV Top 3": get_streak_metrics(p_h, 'C3'),
+                    "DC Top 3": get_streak_metrics(p_h, 'D3'),
+                    "1,000+ DC": get_streak_metrics(p_h, 'D1K'),
+                    "RotW": get_streak_metrics(p_h, 'is_RotW'),
+                    "Rising Star": get_streak_metrics(p_h, 'is_RS')
                 })
-            st.dataframe(format_table(pd.DataFrame(final_s).sort_values("DC Top 3", ascending=False), 
-                         ["Lvl Top 3", "CV Top 3", "DC Top 3", "1,000+ DC", "RotW", "Rising Star"]), hide_index=True, use_container_width=True)
+            
+            # Sort helper for strings like "5 (10)" -> sorts by active number
+            s_df = pd.DataFrame(final_s)
+            s_df['sort_val'] = s_df['DC Top 3'].apply(lambda x: int(x.split()[0]))
+            st.dataframe(s_df.sort_values("sort_val", ascending=False).drop(columns=['sort_val']), 
+                         hide_index=True, use_container_width=True)
 
         # TAB 5: PROFILES
         with tabs[5]:
             p_status = full_corp_history.drop_duplicates(subset=['Player Name'], keep='last')[['Player Name', 'Status']].sort_values(['Status', 'Player Name'])
             sel_p = st.selectbox("Search Member:", p_status['Player Name'].tolist(), key="p_sel")
             p_hist = full_corp_history[full_corp_history['Player Name'] == sel_p].sort_values('Date')
-            st.plotly_chart(px.line(p_hist, x='Date', y='Lvl Gain', markers=True))
+            st.plotly_chart(px.line(p_hist, x='Date', y='Lvl Gain', title="Weekly Level Gain History", markers=True))
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Status", p_hist['Status'].iloc[-1])
             m2.metric("Total Lvl", f"+{int(p_hist['Lvl Gain'].sum()):,}")
