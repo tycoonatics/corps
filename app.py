@@ -201,7 +201,7 @@ if not df.empty:
                 "Weeks": len(current_streak),
                 "Start Date": current_streak[0],
                 "End Date": current_streak[-1],
-                "Is Active": current_streak[-1] == latest_corp_date
+                "Is Active": p_sorted.iloc[-1]['Date'] == latest_corp_date and p_sorted.iloc[-1][metric_col]
             })
         return streaks
 
@@ -494,22 +494,24 @@ if not df.empty:
             if all_historical_streaks:
                 master_streak_df = pd.DataFrame(all_historical_streaks)
                 
-                # Format datetime to string presentation match
-                master_streak_df['Start Date'] = master_streak_df['Start Date'].dt.strftime('%m/%d/%Y')
-                master_streak_df['End Date'] = master_streak_df['End Date'].dt.strftime('%m/%d/%Y')
-                
                 # Build Leaderboard 1: Top Active Streaks
                 active_streaks_df = master_streak_df[master_streak_df['Is Active'] == True].copy()
                 active_streaks_df = active_streaks_df.sort_values('Weeks', ascending=False).head(10)
-                active_streaks_df['End Date'] = "Streak Active!"
-                active_streaks_display = active_streaks_df[['Type', 'Name', 'Weeks', 'Start Date', 'End Date']].rename(
-                    columns={'Type': 'Type Name', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date', 'End Date': 'Status'}
-                )
+                active_streaks_display = active_streaks_df[['Type', 'Name', 'Weeks', 'Start Date']].copy()
+                active_streaks_display['Start Date'] = active_streaks_display['Start Date'].dt.strftime('%m/%d/%Y')
+                active_streaks_display.rename(columns={'Type': 'TypeName', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date'}, inplace=True)
                 
                 # Build Leaderboard 2: Top Longest Historical Streaks
                 longest_streaks_df = master_streak_df.sort_values('Weeks', ascending=False).head(10).copy()
-                longest_display = longest_streaks_df[['Type', 'Name', 'Weeks', 'Start Date', 'End Date']].rename(
-                    columns={'Type': 'Type Name', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date', 'End Date': 'End Date'}
+                
+                # Dynamic conditional for End Date: swap out date for 'Streak Active!' text flag
+                longest_streaks_df['End Date Presentation'] = longest_streaks_df.apply(
+                    lambda row: "Streak Active!" if row['Is Active'] else row['End Date'].strftime('%m/%d/%Y'), axis=1
+                )
+                longest_streaks_df['Start Date'] = longest_streaks_df['Start Date'].dt.strftime('%m/%d/%Y')
+                
+                longest_display = longest_streaks_df[['Type', 'Name', 'Weeks', 'Start Date', 'End Date Presentation']].rename(
+                    columns={'Type': 'TypeName', 'Name': 'Name', 'Weeks': 'Weeks', 'Start Date': 'Start Date', 'End Date Presentation': 'End Date'}
                 )
                 
                 # Output side-by-side matching columns
