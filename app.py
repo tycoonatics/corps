@@ -516,7 +516,7 @@ if not df.empty:
                 c_streak_1, c_streak_2 = st.columns(2)
                 with c_streak_1:
                     st.markdown('### 🔥 Top Active Streaks')
-                    st.dataframe(active_display, hide_index=True, use_container_width=True)
+                    st.dataframe(active_streaks_display, hide_index=True, use_container_width=True)
                     
                 with c_streak_2:
                     st.markdown('### 👑 Top Longest Streaks')
