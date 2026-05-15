@@ -69,7 +69,7 @@ def load_mapped_data():
             
         stats_df = stats_df.sort_values(['UID', 'Date'])
 
-        # Gains Calculation with Spike Protection
+        # Gains Calculation
         stats_df['Days_Gap'] = stats_df.groupby('UID')['Date'].diff().dt.days
         for col in ['Lvl', 'CV', 'DC']:
             stats_df[f'{col}_Raw_Diff'] = stats_df.groupby('UID')[col].diff()
@@ -128,13 +128,13 @@ if not df.empty:
                 week_data['Lvl Rank'] = week_data['Lvl Gain'].rank(ascending=False, method='min')
                 week_data['CV Rank'] = week_data['CV Gain'].rank(ascending=False, method='min')
                 week_data['DC Rank'] = week_data['DC Gain'].rank(ascending=False, method='min')
-                st.markdown('<div class="section-header">🏅 Weekly Performance Awards</div>', unsafe_allow_html=True)
+                st.markdown('<div class="section-header">🏅 Weekly Awards</div>', unsafe_allow_html=True)
                 a1, a2 = st.columns(2)
                 lvl_cut = week_data['Lvl'].quantile(0.35)
                 rookies = week_data[week_data['Lvl'] <= lvl_cut]
                 if not rookies.empty:
                     rw = rookies.sort_values('DC Gain', ascending=False).iloc[0]
-                    a1.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🐣 Rookie of the Week</h3><h1>{rw["Player Name"]}</h1><p>Top DC among players ≤ Lvl {int(lvl_cut)}</p></div>', unsafe_allow_html=True)
+                    a1.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🐣 Rookie of the Week</h3><h1>{rw["Player Name"]}</h1><p>Top DC ≤ Lvl {int(lvl_cut)}</p></div>', unsafe_allow_html=True)
                 week_data['RS'] = week_data['Lvl Rank'] + week_data['CV Rank'] + week_data['DC Rank']
                 rsw = week_data.sort_values(['RS', 'DC Gain'], ascending=[True, False]).iloc[0]
                 a2.markdown(f'<div class="award-card"><h3 style="color:#ffd700;">🚀 Rising Star</h3><h1>{rsw["Player Name"]}</h1></div>', unsafe_allow_html=True)
@@ -200,10 +200,9 @@ if not df.empty:
             s_data = active_df.copy()
             s_data['L3'] = s_data.groupby('Date')['Lvl Gain'].rank(ascending=False, method='min') <= 3
             s_data['C3'] = s_data.groupby('Date')['CV Gain'].rank(ascending=False, method='min') <= 3
+            s_data['D3'] = s_data.groupby('Date')['DC Gain'].rank(ascending=False, method='min') <= 3
             s_data['D1K'] = s_data['DC Gain'] >= 1000
-            
-            # Award logic (simplified for streak scan)
-            s_data['is_RS'] = False # Logic can be expanded based on Tab 1
+            s_data['is_RS'] = False # Logic available for expansion
             s_data['is_RotW'] = False 
 
             final_s = []
@@ -213,12 +212,13 @@ if not df.empty:
                     "Player Name": p_h['Player Name'].iloc[0],
                     "Lvl Top 3": get_streak(p_h, 'L3'),
                     "CV Top 3": get_streak(p_h, 'C3'),
+                    "DC Top 3": get_streak(p_h, 'D3'),
                     "1,000+ DC": get_streak(p_h, 'D1K'),
                     "RotW": get_streak(p_h, 'is_RotW'),
                     "Rising Star": get_streak(p_h, 'is_RS')
                 })
-            st.dataframe(format_table(pd.DataFrame(final_s).sort_values("1,000+ DC", ascending=False), 
-                         ["Lvl Top 3", "CV Top 3", "1,000+ DC", "RotW", "Rising Star"]), hide_index=True, use_container_width=True)
+            st.dataframe(format_table(pd.DataFrame(final_s).sort_values("DC Top 3", ascending=False), 
+                         ["Lvl Top 3", "CV Top 3", "DC Top 3", "1,000+ DC", "RotW", "Rising Star"]), hide_index=True, use_container_width=True)
 
         # TAB 5: PROFILES
         with tabs[5]:
@@ -244,4 +244,4 @@ if not df.empty:
                         st.cache_data.clear()
                         st.rerun()
     else: st.warning("No data found.")
-else: st.info("Awaiting connection...")
+else: st.info("Awaiting connection to database...")
