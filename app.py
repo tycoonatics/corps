@@ -75,6 +75,7 @@ def load_mapped_data():
             stats_df[col] = pd.to_numeric(stats_df[col], errors='coerce').fillna(0)
             
         stats_df = stats_df.sort_values(['UID', 'Date'])
+        # Weekly activity (difference between this week and last week)
         stats_df['Lvl Gain'] = stats_df.groupby('UID')['Lvl'].diff().fillna(0)
         stats_df['CV Gain'] = stats_df.groupby('UID')['CV'].diff().fillna(0)
         stats_df['DC Gain'] = stats_df.groupby('UID')['DC'].diff().fillna(0)
@@ -95,7 +96,6 @@ if not df.empty:
     available_corps = sorted(df['Corp Name'].unique())
     selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
     
-    # Pre-filtering for the current corporation
     full_corp_history = df[df['Corp Name'] == selected_corp_name]
     active_df = full_corp_history[full_corp_history['Status'].astype(str).str.contains("Active", case=False, na=False)]
     
@@ -104,8 +104,6 @@ if not df.empty:
             "🏠 Overview", "📈 Weekly Gains", "👑 Hall of Fame", "🔥 Streaks", "👤 Profiles", "🔑 Admin"
         ])
 
-        # --- TABS 1-4 (Standard Roster Views) ---
-        # Note: These use 'active_df' to ensure only current members show in leaderboards
         with tab_overview:
             latest_date = active_df['Date'].max()
             latest_df = active_df[active_df['Date'] == latest_date]
@@ -123,21 +121,37 @@ if not df.empty:
             week_data = active_df[active_df['Date'] == pd.to_datetime(sel_week)]
             w1, w2, w3 = st.columns(3)
             w1.subheader("📈 Lvl Gain")
-            w1.dataframe(format_table(week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True)
+            w1.dataframe(format_table(week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True, use_container_width=True)
             w2.subheader("💰 CV Gain")
-            w2.dataframe(format_table(week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False), ['CV Gain']), hide_index=True)
+            w2.dataframe(format_table(week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False), ['CV Gain']), hide_index=True, use_container_width=True)
             w3.subheader("💫 DC Gain")
-            w3.dataframe(format_table(week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True)
+            w3.dataframe(format_table(week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True, use_container_width=True)
 
         with tab_hof:
-            st.markdown('<div class="section-header">👑 All-Time Records (Active Members Only)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">👑 Lifetime Achievement (Active Members)</div>', unsafe_allow_html=True)
             h1, h2, h3 = st.columns(3)
-            h1.dataframe(format_table(active_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False).reset_index(), ['Lvl']), hide_index=True)
-            h2.dataframe(format_table(active_df.groupby('Player Name')['CV'].max().sort_values(ascending=False).reset_index(), ['CV']), hide_index=True)
-            h3.dataframe(format_table(active_df.groupby('Player Name')['DC'].sum().sort_values(ascending=False).reset_index(), ['DC']), hide_index=True)
+            
+            # HOFS: Logic update - (Newest value - Oldest value)
+            hof_data = []
+            for uid in active_df['UID'].unique():
+                p_data = active_df[active_df['UID'] == uid].sort_values('Date')
+                if len(p_data) > 0:
+                    hof_data.append({
+                        "Player Name": p_data['Player Name'].iloc[0],
+                        "Lvl Growth": p_data['Lvl'].iloc[-1] - p_data['Lvl'].iloc[0],
+                        "CV Growth": p_data['CV'].iloc[-1] - p_data['CV'].iloc[0],
+                        "Total DC": p_data['DC'].iloc[-1] - p_data['DC'].iloc[0]
+                    })
+            hof_df = pd.DataFrame(hof_data)
+            
+            h1.subheader("🏆 Lvl Growth")
+            h1.dataframe(format_table(hof_df[['Player Name', 'Lvl Growth']].sort_values('Lvl Growth', ascending=False), ['Lvl Growth']), hide_index=True, use_container_width=True)
+            h2.subheader("💰 CV Growth")
+            h2.dataframe(format_table(hof_df[['Player Name', 'CV Growth']].sort_values('CV Growth', ascending=False), ['CV Growth']), hide_index=True, use_container_width=True)
+            h3.subheader("💫 Total DC")
+            h3.dataframe(format_table(hof_df[['Player Name', 'Total DC']].sort_values('Total DC', ascending=False), ['Total DC']), hide_index=True, use_container_width=True)
 
         with tab_streaks:
-            # Simple streak logic
             distinct_weeks = sorted(active_df['Date'].unique(), reverse=True)
             streak_list = []
             for uid in active_df['UID'].unique():
@@ -147,40 +161,34 @@ if not df.empty:
                     if w in p_dates: c += 1
                     else: break
                 streak_list.append({"Player Name": active_df[active_df['UID']==uid]['Player Name'].iloc[0], "Weeks": c})
-            st.dataframe(format_table(pd.DataFrame(streak_list).sort_values("Weeks", ascending=False), ["Weeks"]), hide_index=True)
+            st.dataframe(format_table(pd.DataFrame(streak_list).sort_values("Weeks", ascending=False), ["Weeks"]), hide_index=True, use_container_width=True)
 
-        # --- TAB 5: PROFILES (Custom Sorting Applied Here) ---
         with tab_profiles:
             st.markdown('<div class="section-header">👤 Member Progression</div>', unsafe_allow_html=True)
-            
-            # SORTING LOGIC: Sort by Status (Active first), then by Name
-            # We create a unique list of players with their current status
             player_status_df = full_corp_history.drop_duplicates(subset=['Player Name'], keep='last')[['Player Name', 'Status']]
-            
-            # Custom sort: Active < Inactive alphabetically, then Name alphabetically
             player_status_df = player_status_df.sort_values(by=['Status', 'Player Name'], ascending=[True, True])
-            
-            # Create a display list (optional: adds status tag to name in dropdown)
             player_options = player_status_df['Player Name'].tolist()
             
             sel_player = st.selectbox("Search Member:", player_options)
             p_history = full_corp_history[full_corp_history['Player Name'] == sel_player].sort_values('Date')
             
-            # Graphs
             g1, g2, g3 = st.tabs(["📈 Weekly Lvl Gain", "💰 Weekly CV Gain", "💫 Weekly DC Gain"])
             with g1: st.plotly_chart(px.line(p_history, x='Date', y='Lvl Gain', markers=True), use_container_width=True)
             with g2: st.plotly_chart(px.line(p_history, x='Date', y='CV Gain', markers=True), use_container_width=True)
             with g3: st.plotly_chart(px.line(p_history, x='Date', y='DC Gain', markers=True), use_container_width=True)
 
-            # Metrics
             st.write("---")
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+            
+            # Logic: (Latest - Earliest)
+            total_dc_earned = p_history['DC'].iloc[-1] - p_history['DC'].iloc[0]
+            total_lvl_gained = p_history['Lvl'].iloc[-1] - p_history['Lvl'].iloc[0]
+            
             m_col1.metric("Status", p_history['Status'].iloc[-1])
-            m_col2.metric("Current Lvl", f"{int(p_history['Lvl'].iloc[-1]):,}")
-            m_col3.metric("Avg DC Gain", f"+{int(p_history['DC Gain'].mean()):,}")
-            m_col4.metric("Total DC", f"{int(p_history['DC'].sum()):,}")
+            m_col2.metric("Total Lvl Gain", f"+{int(total_lvl_gained):,}")
+            m_col3.metric("Avg Weekly DC", f"+{int(p_history['DC Gain'].mean()):,}")
+            m_col4.metric("Total DC Contribution", f"{int(total_dc_earned):,}")
 
-        # --- TAB 6: ADMIN ---
         with tab_admin:
             pwd = st.text_input("Password:", type="password")
             if pwd == st.secrets.get("admin_password", "rcttaddict"):
