@@ -195,10 +195,15 @@ if not df.empty:
         with tabs[1]:
             st.markdown('<div class="section-header">👑 All-Time Standings (Active Members Only)</div>', unsafe_allow_html=True)
             
-            # Extract absolute latest entries first
+            # 1. Pull the most recent entry for each historical name record
             latest_snapshots = full_corp_history.sort_values('Date').groupby('Player Name').last().reset_index()
-            # Strict verification step: Keep records *only* if their absolute latest status flag is 'Active'
-            current_snapshots = latest_snapshots[latest_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
+            
+            # 2. Strict live lookup mapping: Filters out any player not actively marked "Active" right now
+            current_snapshots = latest_snapshots[
+                latest_snapshots['Player Name'].map(
+                    lambda name: str(status_map.get({v: k for k, v in player_map.items()}.get(name), "")).strip().lower() == "active"
+                )
+            ].copy()
             
             if not current_snapshots.empty:
                 # Compute discrete individual ranks
@@ -231,13 +236,13 @@ if not df.empty:
                 # Apply standard column numeric styles
                 styled_master = format_table(master_board, ['Lvl', 'CV', 'DC'])
                 
-                # Safe fallback to highlight the 'Overall Rank' column via Pandas Styler
+                # Highlight the 'Overall Rank' column via Pandas Styler to avoid version-based column_config TypeErrors
                 styled_master = styled_master.map(
                     lambda v: 'background-color: rgba(147, 51, 234, 0.15); font-weight: bold;', 
                     subset=['Overall Rank']
                 )
                 
-                # Streamlit dataframe grouping setup
+                # Streamlit dataframe column alignment configuration and grouping dividers
                 st.dataframe(
                     styled_master,
                     hide_index=True,
