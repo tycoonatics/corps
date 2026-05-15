@@ -27,13 +27,33 @@ st.markdown("""
         background-color: #e2e8f0; padding: 6px 12px; border-radius: 4px;
         font-weight: bold; margin-bottom: 10px; margin-top: 25px; color: #1e293b;
     }
+    
+    /* Elegant Dark-Mode Friendly Domain Headers */
     .domain-header {
-        padding: 10px; border-radius: 8px 8px 0px 0px; text-align: center;
-        font-weight: bold; color: white; margin-top: 20px;
+        padding: 12px;
+        border-radius: 8px 8px 0px 0px;
+        text-align: center;
+        font-weight: bold;
+        color: #f8fafc;
+        margin-top: 20px;
+        font-size: 1.1rem;
+        letter-spacing: 0.5px;
     }
-    .lvl-bg { background: linear-gradient(45deg, #4facfe 0%, #00f2fe 100%); }
-    .cv-bg { background: linear-gradient(45deg, #43e97b 0%, #38f9d7 100%); }
-    .dc-bg { background: linear-gradient(45deg, #fa709a 0%, #fee140 100%); }
+    .lvl-bg { 
+        background-color: rgba(14, 116, 144, 0.3); 
+        border: 1px solid #06b6d4; 
+        border-bottom: none;
+    }
+    .cv-bg { 
+        background-color: rgba(21, 128, 61, 0.3); 
+        border: 1px solid #10b981; 
+        border-bottom: none;
+    }
+    .dc-bg { 
+        background-color: rgba(161, 98, 7, 0.3); 
+        border: 1px solid #eab308; 
+        border-bottom: none;
+    }
     
     .award-card {
         background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700;
