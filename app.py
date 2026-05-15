@@ -7,16 +7,14 @@ import base64
 import json
 import plotly.express as px
 import calendar
-import streamlit.components.v1 as components
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="RCT Touch Analytics", page_icon="📊", layout="wide")
 
-# --- 2. ADVANCED BRANDING CLOAK & JAVASCRIPT BUSTER ---
-# 2A. Core CSS Layer
+# --- 2. FLOATING ELEMENT MASK & ADVANCED BRANDING CLOAK ---
 st.markdown("""
     <style>
-    /* Nuke traditional header, footer, and wrapper structures */
+    /* 1. Nuke standard internal layout targets */
     [data-testid="stHeader"], header, footer, .stAppFooter, #MainMenu, [data-testid="stDecoration"],
     button[title="Collapse sidebar"], input[aria-label="Show sidebar"] {
         display: none !important;
@@ -24,13 +22,27 @@ st.markdown("""
         height: 0 !important;
     }
     
-    /* Remove extra padding left over from the hidden header/footer */
-    .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 0rem !important;
+    /* 2. FORCE THE APP TO CLOAK THE OUTER WRAPPER CONTAINER */
+    /* This forces the app viewport to paint cleanly over the iframe edges */
+    .stApp {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 999999 !important;
+        background-color: #0e1117 !important;
     }
     
-    /* Elegant Custom Dashboard Theme */
+    /* Fix standard container scroll behaviors inside the forced fullscreen layout */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        overflow-y: auto !important;
+        height: 100vh !important;
+    }
+    
+    /* 3. Custom Dashboard UI Theme Elements */
     .main-header {
         background: linear-gradient(90deg, #ff8c00, #ff0080);
         padding: 20px; border-radius: 15px; text-align: center;
@@ -45,7 +57,7 @@ st.markdown("""
         font-weight: bold; margin-bottom: 10px; margin-top: 25px; color: #1e293b;
     }
     
-    /* Domain Headers */
+    /* Domain Track Tables Styling */
     .domain-header {
         padding: 12px; border-radius: 8px 8px 0px 0px; text-align: center;
         font-weight: bold; color: #f8fafc; margin-top: 20px; font-size: 1.1rem; letter-spacing: 0.5px;
@@ -57,36 +69,6 @@ st.markdown("""
     .award-card { background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700; padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 20px; min-height: 160px; }
     </style>
 """, unsafe_allow_html=True)
-
-# 2B. Dynamic JavaScript Buster to hunt and destroy floating toolbar widgets at the parent window root
-components.html("""
-    <script>
-    function nukeFloatingElements() {
-        // Look through the main parent document since Streamlit runs inside an iframe
-        const targetDoc = window.parent.document;
-        
-        // Dynamic search arrays for Streamlit's core hosting buttons and widgets
-        const selectors = [
-            '.stStatusWidget',
-            '[data-testid="stStatusWidget"]',
-            'div[class^="stDeployButton"]',
-            '#stConnectionStatus',
-            '.stToolbar'
-        ];
-        
-        selectors.forEach(selector => {
-            const elements = targetDoc.querySelectorAll(selector);
-            elements.forEach(el => {
-                el.style.display = 'none';
-                el.remove(); // Force completely remove from DOM tree
-            });
-        });
-    }
-    
-    // Run multiple cycles to catch elements rendering asynchronously on load
-    setInterval(nukeFloatingElements, 500);
-    </script>
-""", height=0, width=0)
 
 st.markdown('<div class="main-header">📊 RCT Touch Corp Analytics</div>', unsafe_allow_html=True)
 
