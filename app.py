@@ -70,7 +70,7 @@ def load_mapped_data():
         raw_stats_ws = sh.worksheet("Corporation_Stats")
         stats_df = pd.DataFrame(raw_stats_ws.get_all_records())
         
-        # Robust Date Conversion
+        # Date Handling
         stats_df['Date'] = pd.to_datetime(stats_df['Date'], format='mixed', errors='coerce')
         stats_df = stats_df.dropna(subset=['Date'])
         
@@ -83,7 +83,7 @@ def load_mapped_data():
         for col in ['Lvl', 'CV', 'DC']:
             stats_df[col] = pd.to_numeric(stats_df[col], errors='coerce').fillna(0)
             
-        # CALCULATE WEEKLY GAINS (Sort by Player and Date)
+        # CALCULATE WEEKLY GAINS
         stats_df = stats_df.sort_values(['UID', 'Date'])
         stats_df['Lvl Gain'] = stats_df.groupby('UID')['Lvl'].diff().fillna(0)
         stats_df['CV Gain'] = stats_df.groupby('UID')['CV'].diff().fillna(0)
@@ -102,7 +102,7 @@ if not df.empty:
     available_corps = sorted(df['Corp Name'].unique())
     selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
     
-    # GLOBAL FILTER: ONLY SHOW ACTIVE MEMBERS (Main Tabs)
+    # Filter only Active Members for main viewing
     active_df = df[df['Status'].astype(str).str.contains("Active", case=False, na=False)]
     corp_df = active_df[active_df['Corp Name'] == selected_corp_name].sort_values('Date', ascending=False)
     
@@ -119,16 +119,16 @@ if not df.empty:
             st.markdown(f'<div class="section-header">📈 {selected_corp_name} Roster ({latest_date.strftime("%Y-%m-%d")})</div>', unsafe_allow_html=True)
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Active Roster", f"{len(latest_df)}")
-            m2.metric("Avg Level", f"{latest_df['Lvl'].mean():.1f}")
+            m2.metric("Avg Level", f"{latest_df['Lvl'].mean():,.1f}")
             m3.metric("Total Value", f"${latest_df['CV'].sum():,.0f}M")
             m4.metric("Total Donations", f"{latest_df['DC'].sum():,.0f}")
             
             st.dataframe(
                 latest_df[['Player Name', 'Lvl', 'CV', 'DC']], 
                 column_config={
-                    "Lvl": st.column_config.NumberColumn(format="%d"),
-                    "CV": st.column_config.NumberColumn("CV (M)", format="%d"),
-                    "DC": st.column_config.NumberColumn("Donations", format="%d"),
+                    "Lvl": st.column_config.NumberColumn(format=",d"),
+                    "CV": st.column_config.NumberColumn("CV (M)", format=",d"),
+                    "DC": st.column_config.NumberColumn("Donations", format=",d"),
                 },
                 hide_index=True, use_container_width=True
             )
@@ -137,13 +137,10 @@ if not df.empty:
         with tab_weekly:
             st.markdown('<div class="section-header">📅 Weekly Progress Leaderboards (Gains Only)</div>', unsafe_allow_html=True)
             
-            # Use formatted strings for the selectbox to avoid serialization errors
             all_weeks_dt = sorted(corp_df['Date'].unique(), reverse=True)
             week_options = [dt.strftime("%Y-%m-%d") for dt in all_weeks_dt]
-            
             sel_week_str = st.selectbox("Select Week Starting:", options=week_options)
             
-            # Convert selected string back to datetime to filter data
             sel_week_dt = pd.to_datetime(sel_week_str)
             week_data = corp_df[corp_df['Date'] == sel_week_dt]
             
@@ -152,19 +149,19 @@ if not df.empty:
             with w_col1:
                 st.subheader("📈 Lvl Gains")
                 st.dataframe(week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False),
-                             column_config={"Lvl Gain": st.column_config.NumberColumn(format="+%d")},
+                             column_config={"Lvl Gain": st.column_config.NumberColumn(format="+,d")},
                              hide_index=True, use_container_width=True)
 
             with w_col2:
                 st.subheader("💰 CV Gains (M)")
                 st.dataframe(week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False),
-                             column_config={"CV Gain": st.column_config.NumberColumn(format="+%d")},
+                             column_config={"CV Gain": st.column_config.NumberColumn(format="+,d")},
                              hide_index=True, use_container_width=True)
 
             with w_col3:
                 st.subheader("💫 DC Gains")
                 st.dataframe(week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False),
-                             column_config={"DC Gain": st.column_config.NumberColumn(format="+%d")},
+                             column_config={"DC Gain": st.column_config.NumberColumn(format="+,d")},
                              hide_index=True, use_container_width=True)
 
         # --- TAB 3: HALL OF FAME ---
@@ -173,13 +170,13 @@ if not df.empty:
             h1, h2, h3 = st.columns(3)
             h1.subheader("🏆 Peak Level")
             h1.dataframe(corp_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False).reset_index(), 
-                         column_config={"Lvl": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
+                         column_config={"Lvl": st.column_config.NumberColumn(format=",d")}, hide_index=True, use_container_width=True)
             h2.subheader("💰 Peak CV")
             h2.dataframe(corp_df.groupby('Player Name')['CV'].max().sort_values(ascending=False).reset_index(), 
-                         column_config={"CV": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
+                         column_config={"CV": st.column_config.NumberColumn(format=",d")}, hide_index=True, use_container_width=True)
             h3.subheader("💫 Lifetime DC")
             h3.dataframe(corp_df.groupby('Player Name')['DC'].sum().sort_values(ascending=False).reset_index(), 
-                         column_config={"DC": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
+                         column_config={"DC": st.column_config.NumberColumn(format=",d")}, hide_index=True, use_container_width=True)
 
         # --- TAB 4: STREAKS ---
         with tab_streaks:
@@ -195,12 +192,12 @@ if not df.empty:
                     else: break
                 streak_data.append({"Player Name": p_logs['Player Name'].iloc[0], "Weeks Active": count})
             st.dataframe(pd.DataFrame(streak_data).sort_values("Weeks Active", ascending=False), 
-                         column_config={"Weeks Active": st.column_config.NumberColumn(format="🔥 %d")},
+                         column_config={"Weeks Active": st.column_config.NumberColumn(format="🔥 ,d")},
                          hide_index=True, use_container_width=True)
 
         # --- TAB 5: MEMBER PROFILES ---
         with tab_profiles:
-            st.markdown('<div class="section-header">👤 Individual Member Database (Includes Inactive)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">👤 Individual Member Database</div>', unsafe_allow_html=True)
             full_corp_history = df[df['Corp Name'] == selected_corp_name]
             all_players = sorted(full_corp_history['Player Name'].unique())
             sel_player = st.selectbox("Search Member:", all_players)
@@ -234,4 +231,4 @@ if not df.empty:
     else:
         st.warning(f"No active members found for {selected_corp_name}.")
 else:
-    st.info("Hub ready. Ensure Spreadsheet is populated.")
+    st.info("Hub ready. Ensure your Google Sheet is populated and connected.")
