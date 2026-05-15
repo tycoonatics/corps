@@ -193,18 +193,18 @@ if not df.empty:
 
         # TAB 1: ALL-TIME LEADERBOARDS
         with tabs[1]:
-            st.markdown('<div class="section-header">👑 All-Time Standings (Current Absolute Values)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">👑 All-Time Standings (Active Members Only)</div>', unsafe_allow_html=True)
             
-            # Extract absolute latest entries per unique user
+            # Extract absolute latest snapshots of players that are explicitly flagged as Active
             current_snapshots = active_df.sort_values('Date').groupby('Player Name').last().reset_index()
             
             if not current_snapshots.empty:
-                # Compute discrete individual ranks
+                # Compute individual domain ranks among active pool
                 current_snapshots['L_Rank'] = current_snapshots['Lvl'].rank(ascending=False, method='min')
                 current_snapshots['C_Rank'] = current_snapshots['CV'].rank(ascending=False, method='min')
                 current_snapshots['D_Rank'] = current_snapshots['DC'].rank(ascending=False, method='min')
                 
-                # Overall performance aggregate score tracking
+                # Performance aggregate tracking (Lowest sum wins)
                 current_snapshots['Rank_Sum'] = current_snapshots['L_Rank'] + current_snapshots['C_Rank'] + current_snapshots['D_Rank']
                 current_snapshots['Overall_Rank'] = current_snapshots['Rank_Sum'].rank(ascending=True, method='min')
                 
