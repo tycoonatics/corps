@@ -346,13 +346,20 @@ if not df.empty:
         with tabs[5]:
             st.markdown('<div class="section-header">🏋️ True Grind Index (Historical Weekly Averages)</div>', unsafe_allow_html=True)
             
-            # Calculate mean performance metrics for active members across all recorded sessions
-            grind_df = active_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].mean().reset_index()
-            
-            if not grind_df.empty:
-                grind_df.rename(columns={'Lvl Gain': 'Avg Lvl Gain', 'CV Gain': 'Avg CV Gain', 'DC Gain': 'Avg DC Gain'}, inplace=True)
+            if not active_df.empty:
+                # SPECIAL RULE FOR LEVEL CALCULATIONS:
+                # Drop rows where level is already maxed out at 999 AND the gain is 0 so it doesn't penalize their historical average.
+                lvl_grind_df = active_df[~((active_df['Lvl'] >= 999) & (active_df['Lvl Gain'] == 0))]
                 
-                # Assign distinct leaderboard rankings
+                # Group by player for separate metric branches
+                lvl_avg = lvl_grind_df.groupby('Player Name')['Lvl Gain'].mean().reset_index().rename(columns={'Lvl Gain': 'Avg Lvl Gain'})
+                cv_avg = active_df.groupby('Player Name')['CV Gain'].mean().reset_index().rename(columns={'CV Gain': 'Avg CV Gain'})
+                dc_avg = active_df.groupby('Player Name')['DC Gain'].mean().reset_index().rename(columns={'DC Gain': 'Avg DC Gain'})
+                
+                # Re-merge the calculated branches cleanly back together
+                grind_df = lvl_avg.merge(cv_avg, on='Player Name', how='outer').merge(dc_avg, on='Player Name', how='outer').fillna(0)
+                
+                # Assign distinct leaderboard rankings based on clean averages
                 grind_df['L_Grind_Rank'] = grind_df['Avg Lvl Gain'].rank(ascending=False, method='min')
                 grind_df['C_Grind_Rank'] = grind_df['Avg CV Gain'].rank(ascending=False, method='min')
                 grind_df['D_Grind_Rank'] = grind_df['Avg DC Gain'].rank(ascending=False, method='min')
@@ -360,7 +367,7 @@ if not df.empty:
                 tg_c1, tg_c2, tg_c3 = st.columns(3)
                 
                 with tg_c1:
-                    st.markdown('<div class="domain-header lvl-bg">📈 Avg Weekly Δ Level</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="domain-header lvl-bg">📈 Avg Weekly Δ Level (999 Cap Shielded)</div>', unsafe_allow_html=True)
                     tg_lvl = grind_df[['L_Grind_Rank', 'Player Name', 'Avg Lvl Gain']].sort_values('L_Grind_Rank')
                     tg_lvl.rename(columns={'L_Grind_Rank': 'Rank'}, inplace=True)
                     st.dataframe(format_table(tg_lvl, ['Avg Lvl Gain']), hide_index=True, use_container_width=True)
