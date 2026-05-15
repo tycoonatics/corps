@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date
 import gspread
 from google.oauth2.service_account import Credentials
 import base64
@@ -43,7 +43,7 @@ st.markdown("""
 
 st.markdown('<div class="main-header">🏆 RCTT KNOWLEDGE HUB </div>', unsafe_allow_html=True)
 
-# --- 3. DATABASE CONNECTION & PROCESSING ---
+# --- 3. DATABASE CONNECTION & ENHANCED PROCESSING ---
 @st.cache_data(ttl=5)
 def load_mapped_data():
     try:
@@ -76,18 +76,20 @@ def load_mapped_data():
             
         stats_df = stats_df.sort_values(['UID', 'Date'])
 
-        # Logic for gains: Only calculate gain if the date is consecutive (approx 7 days)
-        # Otherwise, set gain to 0 to prevent the leave/rejoin reset spike
-        stats_df['Days_Since_Last'] = stats_df.groupby('UID')['Date'].diff().dt.days
+        # --- ADVANCED SPIKE PROTECTION ---
+        # 1. Track the gap between entries
+        stats_df['Days_Gap'] = stats_df.groupby('UID')['Date'].diff().dt.days
         
-        def calculate_safe_gain(row, col):
-            if row['Days_Since_Last'] > 10 or pd.isna(row['Days_Since_Last']):
-                return 0
-            return max(0, row[col + '_diff'])
-
         for col in ['Lvl', 'CV', 'DC']:
-            stats_df[col + '_diff'] = stats_df.groupby('UID')[col].diff()
-            stats_df[col + ' Gain'] = stats_df.apply(lambda r: calculate_safe_gain(r, col), axis=1)
+            # Calculate raw difference
+            stats_df[f'{col}_Raw_Diff'] = stats_df.groupby('UID')[col].diff()
+            
+            # Logic: If gap > 10 days OR the difference is negative, the gain for that week is 0.
+            # This treats re-entries as a "Baseline" reset.
+            stats_df[f'{col} Gain'] = stats_df.apply(
+                lambda row: row[f'{col}_Raw_Diff'] if (row['Days_Gap'] <= 10 and row[f'{col}_Raw_Diff'] >= 0) else 0, 
+                axis=1
+            ).fillna(0)
             
         return stats_df, raw_stats_ws, player_map, status_map, corp_map
     except Exception as e:
@@ -96,9 +98,6 @@ def load_mapped_data():
 
 df, stats_ws, player_map, status_map, corp_map = load_mapped_data()
 
-def format_table(dataframe, columns):
-    return dataframe.style.format({col: "{:,.0f}" for col in columns})
-
 # --- 4. APP DASHBOARD ---
 if not df.empty:
     st.sidebar.header("Global Controls")
@@ -106,53 +105,47 @@ if not df.empty:
     selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
     
     full_corp_history = df[df['Corp Name'] == selected_corp_name]
-    active_df = full_corp_history[full_corp_history['Status'].astype(str).str.contains("Active", case=False, na=False)]
     
     if not full_corp_history.empty:
-        tab_overview, tab_weekly, tab_hof, tab_streaks, tab_profiles, tab_admin = st.tabs([
-            "🏠 Overview", "📈 Weekly Gains", "👑 Hall of Fame", "🔥 Streaks", "👤 Profiles", "🔑 Admin"
-        ])
+        tabs = st.tabs(["🏠 Overview", "📈 Weekly Gains", "👑 Hall of Fame", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
 
-        # (Overview, Weekly, HOF, and Streaks logic as before)
-        # ... [Standard Tabs 1-4] ...
-
-        with tab_profiles:
+        # Tab 5: Member Profiles
+        with tabs[4]:
             st.markdown('<div class="section-header">👤 Member Progression</div>', unsafe_allow_html=True)
+            
+            # Sorting: Active first, then alphabetized
             player_status_df = full_corp_history.drop_duplicates(subset=['Player Name'], keep='last')[['Player Name', 'Status']]
             player_status_df = player_status_df.sort_values(by=['Status', 'Player Name'], ascending=[True, True])
-            player_options = player_status_df['Player Name'].tolist()
             
-            sel_player = st.selectbox("Search Member:", player_options)
+            sel_player = st.selectbox("Search Member:", player_status_df['Player Name'].tolist())
             p_history = full_corp_history[full_corp_history['Player Name'] == sel_player].sort_values('Date')
             
-            # --- THE BREAK IN THE LINE FIX ---
-            # Create a full date range for the corp to find the holes
+            # Create full date range to ensure physical gaps in the line
             all_dates = pd.date_range(start=p_history['Date'].min(), end=p_history['Date'].max(), freq='W-MON')
-            p_history_full = pd.DataFrame({'Date': all_dates})
-            p_history_full = pd.merge(p_history_full, p_history, on='Date', how='left')
-            
-            g1, g2, g3 = st.tabs(["📈 Weekly Lvl Gain", "💰 Weekly CV Gain", "💫 Weekly DC Gain"])
-            
-            # Setting connectgaps=False creates the physical break in the line
-            with g1:
-                fig1 = px.line(p_history_full, x='Date', y='Lvl Gain', markers=True)
-                fig1.update_traces(connectgaps=False)
-                st.plotly_chart(fig1, use_container_width=True)
-            with g2:
-                fig2 = px.line(p_history_full, x='Date', y='CV Gain', markers=True)
-                fig2.update_traces(connectgaps=False)
-                st.plotly_chart(fig2, use_container_width=True)
-            with g3:
-                fig3 = px.line(p_history_full, x='Date', y='DC Gain', markers=True)
-                fig3.update_traces(connectgaps=False)
-                st.plotly_chart(fig3, use_container_width=True)
+            p_history_full = pd.DataFrame({'Date': all_dates}).merge(p_history, on='Date', how='left')
 
+            # Display Line Graphs with order: Lvl, CV, DC
+            sub_tabs = st.tabs(["📈 Weekly Lvl Gain", "💰 Weekly CV Gain", "💫 Weekly DC Gain"])
+            metrics = [('Lvl Gain', sub_tabs[0]), ('CV Gain', sub_tabs[1]), ('DC Gain', sub_tabs[2])]
+            
+            for metric, tab_obj in metrics:
+                with tab_obj:
+                    fig = px.line(p_history_full, x='Date', y=metric, markers=True, 
+                                 title=f"Weekly {metric.replace('Gain', '').strip()} Growth")
+                    fig.update_traces(connectgaps=False) # Important: shows the break
+                    st.plotly_chart(fig, use_container_width=True)
+
+            # Metrics Footer
             st.write("---")
-            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-            m_col1.metric("Status", p_history['Status'].iloc[-1])
-            m_col2.metric("Total Lvl Gain", f"+{int(p_history['Lvl Gain'].sum()):,}")
-            m_col3.metric("Avg Weekly DC", f"+{int(p_history['DC Gain'].mean()):,}")
-            m_col4.metric("Total DC Contribution", f"{int(p_history['DC Gain'].sum()):,}")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Status", p_history['Status'].iloc[-1])
+            m2.metric("Total Lvl Gain", f"+{int(p_history['Lvl Gain'].sum()):,}")
+            m3.metric("Avg Weekly DC", f"+{int(p_history['DC Gain'].mean()):,}")
+            m4.metric("Total DC Contribution", f"{int(p_history['DC Gain'].sum()):,}")
 
-        # (Admin Tab remains as before)
-        # ... [Admin Tab] ...
+        # [Other tabs omitted for brevity, ensure they remain in your version]
+
+    else:
+        st.warning("No data found.")
+else:
+    st.info("Awaiting data...")
