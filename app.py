@@ -85,17 +85,12 @@ def load_mapped_data():
             def sanitize_gains(row, column):
                 diff = row[f'{column}_Raw_Diff']
                 gap = row['Days_Gap']
-                
-                # Basic check for gaps or negative values
                 if pd.isna(diff) or diff < 0 or gap > 10:
                     return 0
-                
-                # Strict Thresholds for Spikes
                 if column == 'DC' and diff > 150000:
                     return 0
-                if column == 'CV' and diff > 100000: # FIX: Prevents the 400k+ CV spike
+                if column == 'CV' and diff > 100000:
                     return 0
-                    
                 return diff
 
             stats_df[f'{col} Gain'] = stats_df.apply(lambda r: sanitize_gains(r, col), axis=1).fillna(0)
@@ -122,10 +117,57 @@ if not df.empty:
     if not full_corp_history.empty:
         tabs = st.tabs(["🏠 Overview", "📈 Weekly Gains", "👑 Hall of Fame", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
 
-        # (Other tabs logic...)
-        # ...
+        # TAB 0: OVERVIEW
+        with tabs[0]:
+            latest_date = active_df['Date'].max()
+            latest_df = active_df[active_df['Date'] == latest_date]
+            st.markdown(f'<div class="section-header">📈 {selected_corp_name} Roster ({latest_date.strftime("%Y-%m-%d")})</div>', unsafe_allow_html=True)
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Active Roster", f"{len(latest_df)}")
+            m2.metric("Avg Level", f"{latest_df['Lvl'].mean():,.0f}")
+            m3.metric("Total Value", f"${latest_df['CV'].sum():,.0f}M")
+            m4.metric("Total Donations", f"{latest_df['DC'].sum():,.0f}")
+            st.dataframe(format_table(latest_df[['Player Name', 'Lvl', 'CV', 'DC']], ['Lvl', 'CV', 'DC']), hide_index=True, use_container_width=True)
 
-        # TAB 5: PROFILES
+        # TAB 1: WEEKLY GAINS
+        with tabs[1]:
+            all_weeks = sorted(active_df['Date'].unique(), reverse=True)
+            sel_week = st.selectbox("Select Week:", [d.strftime("%Y-%m-%d") for d in all_weeks])
+            week_data = active_df[active_df['Date'] == pd.to_datetime(sel_week)]
+            w1, w2, w3 = st.columns(3)
+            w1.subheader("📈 Lvl Gain")
+            w1.dataframe(format_table(week_data[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True, use_container_width=True)
+            w2.subheader("💰 CV Gain")
+            w2.dataframe(format_table(week_data[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False), ['CV Gain']), hide_index=True, use_container_width=True)
+            w3.subheader("💫 DC Gain")
+            w3.dataframe(format_table(week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True, use_container_width=True)
+
+        # TAB 2: HALL OF FAME
+        with tabs[2]:
+            st.markdown('<div class="section-header">👑 Lifetime Growth (Active Members)</div>', unsafe_allow_html=True)
+            h1, h2, h3 = st.columns(3)
+            hof_df = active_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
+            h1.subheader("🏆 Total Lvl Gain")
+            h1.dataframe(format_table(hof_df[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True, use_container_width=True)
+            h2.subheader("💰 Total CV Gain")
+            h2.dataframe(format_table(hof_df[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False), ['CV Gain']), hide_index=True, use_container_width=True)
+            h3.subheader("💫 Total DC")
+            h3.dataframe(format_table(hof_df[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True, use_container_width=True)
+
+        # TAB 3: STREAKS
+        with tabs[3]:
+            distinct_weeks = sorted(active_df['Date'].unique(), reverse=True)
+            streak_list = []
+            for uid in active_df['UID'].unique():
+                p_dates = set(active_df[active_df['UID'] == uid]['Date'])
+                c = 0
+                for w in distinct_weeks:
+                    if w in p_dates: c += 1
+                    else: break
+                streak_list.append({"Player Name": active_df[active_df['UID']==uid]['Player Name'].iloc[0], "Weeks": c})
+            st.dataframe(format_table(pd.DataFrame(streak_list).sort_values("Weeks", ascending=False), ["Weeks"]), hide_index=True, use_container_width=True)
+
+        # TAB 4: PROFILES
         with tabs[4]:
             st.markdown('<div class="section-header">👤 Member Progression</div>', unsafe_allow_html=True)
             player_status_df = full_corp_history.drop_duplicates(subset=['Player Name'], keep='last')[['Player Name', 'Status']]
@@ -133,13 +175,10 @@ if not df.empty:
             sel_player = st.selectbox("Search Member:", player_status_df['Player Name'].tolist())
             
             p_history = full_corp_history[full_corp_history['Player Name'] == sel_player].sort_values('Date')
-            
-            # Gap detection for visual breaks
             all_dates = pd.date_range(start=p_history['Date'].min(), end=p_history['Date'].max(), freq='W-MON')
             p_history_full = pd.DataFrame({'Date': all_dates}).merge(p_history, on='Date', how='left')
 
             sub_tabs = st.tabs(["📈 Weekly Lvl Gain", "💰 Weekly CV Gain", "💫 Weekly DC Gain"])
-            
             with sub_tabs[0]:
                 st.plotly_chart(px.line(p_history_full, x='Date', y='Lvl Gain', markers=True).update_traces(connectgaps=False), use_container_width=True)
             with sub_tabs[1]:
@@ -149,18 +188,29 @@ if not df.empty:
 
             st.write("---")
             m1, m2, m3, m4 = st.columns(4)
-            
-            # Use only weeks with actual activity for the average calculation
             active_dc_weeks = p_history[p_history['DC Gain'] > 0]
             avg_dc_val = active_dc_weeks['DC Gain'].mean() if not active_dc_weeks.empty else 0
-            
             m1.metric("Status", p_history['Status'].iloc[-1])
             m2.metric("Total Lvl Gain", f"+{int(p_history['Lvl Gain'].sum()):,}")
             m3.metric("Avg Weekly DC", f"+{int(avg_dc_val):,}")
             m4.metric("Total DC Contribution", f"{int(p_history['DC Gain'].sum()):,}")
 
-        # TAB 6: ADMIN (and others)
-        # ...
+        # TAB 5: ADMIN
+        with tabs[5]:
+            pwd = st.text_input("Password:", type="password")
+            if pwd == st.secrets.get("admin_password", "rcttaddict"):
+                with st.form("add_log"):
+                    f1, f2 = st.columns(2)
+                    d = f1.date_input("Date", date.today())
+                    u = f1.text_input("UID")
+                    c = f2.text_input("Corp ID", "CORP_001")
+                    l = f2.number_input("Lvl", 1, 999, 100)
+                    cv = f1.number_input("CV (M)", 0, 1000000, 1000)
+                    dc = f2.number_input("Donations", 0, 1000000, 0)
+                    if st.form_submit_button("Commit"):
+                        stats_ws.append_row([str(d), c, u, int(l), int(cv), int(dc)])
+                        st.cache_data.clear()
+                        st.rerun()
     else:
         st.warning("No data found.")
 else:
