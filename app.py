@@ -7,29 +7,21 @@ import base64
 import json
 import plotly.express as px
 import calendar
+import streamlit.components.v1 as components
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="RCT Touch Analytics", page_icon="📊", layout="wide")
 
-# --- 2. ADVANCED BRANDING CLOAK & CSS STYLING ---
+# --- 2. ADVANCED BRANDING CLOAK & JAVASCRIPT BUSTER ---
+# 2A. Core CSS Layer
 st.markdown("""
     <style>
-    /* Absolute brute-force removal of all native Streamlit branding, menus, footers, and bottom-right widgets */
-    [data-testid="stHeader"], 
-    header, 
-    footer, 
-    .stAppFooter, 
-    #MainMenu, 
-    [data-testid="stDecoration"],
-    button[title="Collapse sidebar"],
-    input[aria-label="Show sidebar"],
-    .stStatusWidget,
-    [data-testid="stStatusWidget"],
-    div[class^="stDeployButton"] {
+    /* Nuke traditional header, footer, and wrapper structures */
+    [data-testid="stHeader"], header, footer, .stAppFooter, #MainMenu, [data-testid="stDecoration"],
+    button[title="Collapse sidebar"], input[aria-label="Show sidebar"] {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
-        width: 0 !important;
     }
     
     /* Remove extra padding left over from the hidden header/footer */
@@ -55,42 +47,46 @@ st.markdown("""
     
     /* Domain Headers */
     .domain-header {
-        padding: 12px;
-        border-radius: 8px 8px 0px 0px;
-        text-align: center;
-        font-weight: bold;
-        color: #f8fafc;
-        margin-top: 20px;
-        font-size: 1.1rem;
-        letter-spacing: 0.5px;
+        padding: 12px; border-radius: 8px 8px 0px 0px; text-align: center;
+        font-weight: bold; color: #f8fafc; margin-top: 20px; font-size: 1.1rem; letter-spacing: 0.5px;
     }
-    .lvl-bg { 
-        background-color: rgba(14, 116, 144, 0.3); 
-        border: 1px solid #06b6d4; 
-        border-bottom: none;
-    }
-    .cv-bg { 
-        background-color: rgba(21, 128, 61, 0.3); 
-        border: 1px solid #10b981; 
-        border-bottom: none;
-    }
-    .dc-bg { 
-        background-color: rgba(161, 98, 7, 0.3); 
-        border: 1px solid #eab308; 
-        border-bottom: none;
-    }
-    .overall-bg {
-        background-color: rgba(147, 51, 234, 0.3);
-        border: 1px solid #a855f7;
-        border-bottom: none;
-    }
-    
-    .award-card {
-        background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700;
-        padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 20px; min-height: 160px;
-    }
+    .lvl-bg { background-color: rgba(14, 116, 144, 0.3); border: 1px solid #06b6d4; border-bottom: none; }
+    .cv-bg { background-color: rgba(21, 128, 61, 0.3); border: 1px solid #10b981; border-bottom: none; }
+    .dc-bg { background-color: rgba(161, 98, 7, 0.3); border: 1px solid #eab308; border-bottom: none; }
+    .overall-bg { background-color: rgba(147, 51, 234, 0.3); border: 1px solid #a855f7; border-bottom: none; }
+    .award-card { background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700; padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 20px; min-height: 160px; }
     </style>
 """, unsafe_allow_html=True)
+
+# 2B. Dynamic JavaScript Buster to hunt and destroy floating toolbar widgets at the parent window root
+components.html("""
+    <script>
+    function nukeFloatingElements() {
+        // Look through the main parent document since Streamlit runs inside an iframe
+        const targetDoc = window.parent.document;
+        
+        // Dynamic search arrays for Streamlit's core hosting buttons and widgets
+        const selectors = [
+            '.stStatusWidget',
+            '[data-testid="stStatusWidget"]',
+            'div[class^="stDeployButton"]',
+            '#stConnectionStatus',
+            '.stToolbar'
+        ];
+        
+        selectors.forEach(selector => {
+            const elements = targetDoc.querySelectorAll(selector);
+            elements.forEach(el => {
+                el.style.display = 'none';
+                el.remove(); // Force completely remove from DOM tree
+            });
+        });
+    }
+    
+    // Run multiple cycles to catch elements rendering asynchronously on load
+    setInterval(nukeFloatingElements, 500);
+    </script>
+""", height=0, width=0)
 
 st.markdown('<div class="main-header">📊 RCT Touch Corp Analytics</div>', unsafe_allow_html=True)
 
