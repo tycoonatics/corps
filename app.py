@@ -14,7 +14,7 @@ st.set_page_config(page_title="RCT Touch Analytics", page_icon="📊", layout="w
 # --- 2. ADVANCED BRANDING CLOAK & CSS STYLING ---
 st.markdown("""
     <style>
-    /* Absolute brute-force removal of all native Streamlit branding, menus, and footers */
+    /* Absolute brute-force removal of all native Streamlit branding, menus, footers, and bottom-right widgets */
     [data-testid="stHeader"], 
     header, 
     footer, 
@@ -22,10 +22,14 @@ st.markdown("""
     #MainMenu, 
     [data-testid="stDecoration"],
     button[title="Collapse sidebar"],
-    input[aria-label="Show sidebar"] {
+    input[aria-label="Show sidebar"],
+    .stStatusWidget,
+    [data-testid="stStatusWidget"],
+    div[class^="stDeployButton"] {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
+        width: 0 !important;
     }
     
     /* Remove extra padding left over from the hidden header/footer */
