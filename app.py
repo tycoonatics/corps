@@ -195,24 +195,40 @@ if not df.empty:
         with tabs[1]:
             st.markdown('<div class="section-header">👑 All-Time Standings (Active Members Only)</div>', unsafe_allow_html=True)
             
-            # Extract absolute latest snapshots of players that are explicitly flagged as Active
-            current_snapshots = active_df.sort_values('Date').groupby('Player Name').last().reset_index()
+            # Extract absolute latest entries first
+            latest_snapshots = full_corp_history.sort_values('Date').groupby('Player Name').last().reset_index()
+            # Strict verification step: Keep records *only* if their absolute latest status flag is 'Active'
+            current_snapshots = latest_snapshots[latest_snapshots['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
             
             if not current_snapshots.empty:
-                # Compute individual domain ranks among active pool
+                # Compute discrete individual ranks
                 current_snapshots['L_Rank'] = current_snapshots['Lvl'].rank(ascending=False, method='min')
                 current_snapshots['C_Rank'] = current_snapshots['CV'].rank(ascending=False, method='min')
                 current_snapshots['D_Rank'] = current_snapshots['DC'].rank(ascending=False, method='min')
                 
-                # Performance aggregate tracking (Lowest sum wins)
+                # Performance aggregate tracking (Lowest rank sum wins)
                 current_snapshots['Rank_Sum'] = current_snapshots['L_Rank'] + current_snapshots['C_Rank'] + current_snapshots['D_Rank']
                 current_snapshots['Overall_Rank'] = current_snapshots['Rank_Sum'].rank(ascending=True, method='min')
                 
                 # Master Overall Leaderboard Display
-                st.markdown('<div class="domain-header overall-bg">👑 Master Overall Standings (Rank Sum Lowest Wins)</div>', unsafe_allow_html=True)
-                master_board = current_snapshots[['Overall_Rank', 'Player Name', 'Lvl', 'CV', 'DC', 'Rank_Sum']].sort_values('Overall_Rank')
-                master_board.rename(columns={'Overall_Rank': 'Overall Rank', 'Rank_Sum': 'Score (Sum)'}, inplace=True)
-                st.dataframe(format_table(master_board, ['Lvl', 'CV', 'DC', 'Score (Sum)']), hide_index=True, use_container_width=True)
+                st.markdown('<div class="domain-header overall-bg">👑 Master Overall Standings</div>', unsafe_allow_html=True)
+                
+                # Organize and align rank headers to the left of their metrics
+                master_board = current_snapshots[[
+                    'Overall_Rank', 'Player Name', 
+                    'L_Rank', 'Lvl', 
+                    'C_Rank', 'CV', 
+                    'D_Rank', 'DC'
+                ]].sort_values('Overall_Rank')
+                
+                master_board.rename(columns={
+                    'Overall_Rank': 'Overall Rank', 
+                    'L_Rank': 'Lvl Rank', 
+                    'C_Rank': 'CV Rank', 
+                    'D_Rank': 'DC Rank'
+                }, inplace=True)
+                
+                st.dataframe(format_table(master_board, ['Lvl', 'CV', 'DC']), hide_index=True, use_container_width=True)
                 
                 # Segmented Column Sub-boards
                 al_c1, al_c2, al_c3 = st.columns(3)
