@@ -14,15 +14,25 @@ st.set_page_config(page_title="RCT Touch Analytics", page_icon="📊", layout="w
 # --- 2. ADVANCED BRANDING CLOAK & CSS STYLING ---
 st.markdown("""
     <style>
-    /* Completely hide Streamlit core UI branding elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .viewerBadge_link__1S137 {display: none !important;}
-    input[aria-label="Show sidebar"] {display: none !important;}
-    button[title="Collapse sidebar"] {display: none !important;}
-    [data-testid="stHeader"] {background: rgba(0,0,0,0) !important;}
-    [data-testid="stDecoration"] {display: none !important;}
+    /* Absolute brute-force removal of all native Streamlit branding, menus, and footers */
+    [data-testid="stHeader"], 
+    header, 
+    footer, 
+    .stAppFooter, 
+    #MainMenu, 
+    [data-testid="stDecoration"],
+    button[title="Collapse sidebar"],
+    input[aria-label="Show sidebar"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+    }
+    
+    /* Remove extra padding left over from the hidden header/footer */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 0rem !important;
+    }
     
     /* Elegant Custom Dashboard Theme */
     .main-header {
