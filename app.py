@@ -179,49 +179,59 @@ if not df.empty:
                 mc2.dataframe(format_table(m_totals[['CV Rank', 'Player Name', 'CV Gain']].sort_values('CV Rank'), ['CV Gain']), hide_index=True)
                 mc3.dataframe(format_table(m_totals[['DC Rank', 'Player Name', 'DC Gain']].sort_values('DC Rank'), ['DC Gain']), hide_index=True)
 
-        # TAB 3: HALL OF FAME
-        with tabs[3]:
-            st.markdown('<div class="section-header">👑 Lifetime Growth (Active Members)</div>', unsafe_allow_html=True)
-            h1, h2, h3 = st.columns(3)
-            hof = active_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
-            h1.dataframe(format_table(hof[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True)
-            h2.dataframe(format_table(hof[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False), ['CV Gain']), hide_index=True)
-            h3.dataframe(format_table(hof[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True)
-
         # TAB 4: STREAKS
         with tabs[4]:
             st.markdown('<div class="section-header">🔥 Elite Performance Streaks</div>', unsafe_allow_html=True)
             st.caption("Format: Active (Longest Ever)")
 
             def get_streak_metrics(p_hist, col):
-                # Ensure sorted by date ascending for longest calculation
                 history = p_hist.sort_values('Date', ascending=True)[col].tolist()
-                active = 0
-                longest = 0
-                current_running = 0
-                
-                # Longest calculation
+                active, longest, current_running = 0, 0, 0
                 for val in history:
                     if val:
                         current_running += 1
                         longest = max(longest, current_running)
                     else:
                         current_running = 0
-                
-                # Active calculation (scanning backwards from most recent)
                 for val in reversed(history):
                     if val: active += 1
                     else: break
-                
                 return f"{active} ({longest})"
 
             s_data = active_df.copy()
+            
+            # 1. RANK CALCULATION
             s_data['L3'] = s_data.groupby('Date')['Lvl Gain'].rank(ascending=False, method='min') <= 3
             s_data['C3'] = s_data.groupby('Date')['CV Gain'].rank(ascending=False, method='min') <= 3
             s_data['D3'] = s_data.groupby('Date')['DC Gain'].rank(ascending=False, method='min') <= 3
             s_data['D1K'] = s_data['DC Gain'] >= 1000
-            s_data['is_RS'] = False # Logic available for expansion
-            s_data['is_RotW'] = False 
+
+            # 2. WEEKLY AWARD WINNER SIMULATION
+            award_winners = []
+            for d in s_data['Date'].unique():
+                wk = s_data[s_data['Date'] == d].copy()
+                # Rising Star Logic
+                wk['LR'] = wk['Lvl Gain'].rank(ascending=False, method='min')
+                wk['CR'] = wk['CV Gain'].rank(ascending=False, method='min')
+                wk['DR'] = wk['DC Gain'].rank(ascending=False, method='min')
+                wk['RS_Score'] = wk['LR'] + wk['CR'] + wk['DR']
+                rs_winner_name = wk.sort_values(['RS_Score', 'DC Gain'], ascending=[True, False]).iloc[0]['Player Name']
+                
+                # Rookie Logic
+                l_cut = wk['Lvl'].quantile(0.35)
+                rookies = wk[wk['Lvl'] <= l_cut]
+                rotw_winner_name = None
+                if not rookies.empty:
+                    rotw_winner_name = rookies.sort_values('DC Gain', ascending=False).iloc[0]['Player Name']
+                
+                award_winners.append({'Date': d, 'RS_Winner': rs_winner_name, 'RotW_Winner': rotw_winner_name})
+            
+            awards_df = pd.DataFrame(award_winners)
+            s_data = s_data.merge(awards_df, on='Date', how='left')
+            
+            # 3. BOOLEAN MAPPING
+            s_data['is_RS'] = s_data['Player Name'] == s_data['RS_Winner']
+            s_data['is_RotW'] = s_data['Player Name'] == s_data['RotW_Winner']
 
             final_s = []
             for uid in s_data['UID'].unique():
@@ -236,7 +246,6 @@ if not df.empty:
                     "Rising Star": get_streak_metrics(p_h, 'is_RS')
                 })
             
-            # Sort helper for strings like "5 (10)" -> sorts by active number
             s_df = pd.DataFrame(final_s)
             s_df['sort_val'] = s_df['DC Top 3'].apply(lambda x: int(x.split()[0]))
             st.dataframe(s_df.sort_values("sort_val", ascending=False).drop(columns=['sort_val']), 
