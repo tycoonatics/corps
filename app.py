@@ -122,7 +122,7 @@ def load_mapped_data():
 df, stats_ws, player_map, status_map, corp_map = load_mapped_data()
 
 def format_table(dataframe, columns):
-    f_dict = {col: "{:,.1f}" for col in columns}  # Adjusted to show decimal places for averages
+    f_dict = {col: "{:,.1f}" for col in columns}
     for c in dataframe.columns:
         if any(x in c for x in ['Rank', 'Weeks']):
             f_dict[c] = "{:.0f}"
@@ -184,7 +184,7 @@ if not df.empty:
     active_df = full_corp_history[full_corp_history['Status'].astype(str).str.contains("Active", case=False, na=False)].copy()
     
     if not full_corp_history.empty:
-        tabs = st.tabs(["🏠 Overview", "🏆 All-Time", "📈 Weekly Gains", "🗓️ Monthly", "👑 Hall of Fame", "🏋️ true-grind-index", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
+        tabs = st.tabs(["🏠 Overview", "🏆 All-Time", "📈 Weekly Gains", "🗓️ Monthly", "🗓️ Annual Leaderboards", "🏋️ true-grind-index", "🔥 Streaks", "👤 Profiles", "🔑 Admin"])
 
         # TAB 0: OVERVIEW
         with tabs[0]:
@@ -321,45 +321,55 @@ if not df.empty:
                     md_board.insert(0, 'Rank', md_board['DC Gain'].rank(ascending=False, method='min'))
                     st.dataframe(format_table_absolute(md_board, ['DC Gain']), hide_index=True, use_container_width=True)
 
-        # TAB 4: HALL OF FAME
+        # TAB 4: ANNUAL LEADERBOARDS
         with tabs[4]:
-            st.markdown('<div class="section-header">👑 Lifetime Growth (Active Members)</div>', unsafe_allow_html=True)
-            hof = active_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
-            h1, h2, h3 = st.columns(3)
-            with h1:
-                st.markdown('<div class="domain-header lvl-bg">📈 Lifetime Δ Level</div>', unsafe_allow_html=True)
-                h_lvl = hof[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
-                h_lvl.insert(0, 'Rank', h_lvl['Lvl Gain'].rank(ascending=False, method='min'))
-                st.dataframe(format_table_absolute(h_lvl, ['Lvl Gain']), hide_index=True, use_container_width=True)
-            with h2:
-                st.markdown('<div class="domain-header cv-bg">💰 Lifetime Δ Company Value</div>', unsafe_allow_html=True)
-                h_cv = hof[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
-                h_cv.insert(0, 'Rank', h_cv['CV Gain'].rank(ascending=False, method='min'))
-                st.dataframe(format_table_absolute(h_cv, ['CV Gain']), hide_index=True, use_container_width=True)
-            with h3:
-                st.markdown('<div class="domain-header dc-bg">🎁 Lifetime Δ Donations</div>', unsafe_allow_html=True)
-                h_dc = hof[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
-                h_dc.insert(0, 'Rank', h_dc['DC Gain'].rank(ascending=False, method='min'))
-                st.dataframe(format_table_absolute(h_dc, ['DC Gain']), hide_index=True, use_container_width=True)
+            st.markdown('<div class="section-header">👑 Annual Growth Standings (Active Members)</div>', unsafe_allow_html=True)
+            
+            # Extract distinct available years from dynamic data history, fallback defaults to 2026/2025
+            available_years = sorted(active_df['Date'].dt.year.unique(), reverse=True)
+            if not available_years:
+                available_years = [2026, 2025]
+                
+            selected_year = st.selectbox("Select Calendar Year:", available_years, key="annual_year_sel")
+            
+            # Slice historical segments bound exactly to selected year limits
+            annual_df = active_df[active_df['Date'].dt.year == selected_year].copy()
+            
+            if not annual_df.empty:
+                annual_hof = annual_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
+                
+                h1, h2, h3 = st.columns(3)
+                with h1:
+                    st.markdown(f'<div class="domain-header lvl-bg">📈 {selected_year} Total Δ Level</div>', unsafe_allow_html=True)
+                    h_lvl = annual_hof[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False)
+                    h_lvl.insert(0, 'Rank', h_lvl['Lvl Gain'].rank(ascending=False, method='min'))
+                    st.dataframe(format_table_absolute(h_lvl, ['Lvl Gain']), hide_index=True, use_container_width=True)
+                with h2:
+                    st.markdown(f'<div class="domain-header cv-bg">💰 {selected_year} Total Δ Company Value</div>', unsafe_allow_html=True)
+                    h_cv = annual_hof[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False)
+                    h_cv.insert(0, 'Rank', h_cv['CV Gain'].rank(ascending=False, method='min'))
+                    st.dataframe(format_table_absolute(h_cv, ['CV Gain']), hide_index=True, use_container_width=True)
+                with h3:
+                    st.markdown(f'<div class="domain-header dc-bg">🎁 {selected_year} Total Δ Donations</div>', unsafe_allow_html=True)
+                    h_dc = annual_hof[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False)
+                    h_dc.insert(0, 'Rank', h_dc['DC Gain'].rank(ascending=False, method='min'))
+                    st.dataframe(format_table_absolute(h_dc, ['DC Gain']), hide_index=True, use_container_width=True)
+            else:
+                st.warning(f"No logged data records available for the year {selected_year}.")
 
         # TAB 5: TRUE GRIND INDEX (AVERAGE WEEKLY PERFORMANCE)
         with tabs[5]:
             st.markdown('<div class="section-header">🏋️ True Grind Index (Historical Weekly Averages)</div>', unsafe_allow_html=True)
             
             if not active_df.empty:
-                # SPECIAL RULE FOR LEVEL CALCULATIONS:
-                # Drop rows where level is already maxed out at 999 AND the gain is 0 so it doesn't penalize their historical average.
                 lvl_grind_df = active_df[~((active_df['Lvl'] >= 999) & (active_df['Lvl Gain'] == 0))]
                 
-                # Group by player for separate metric branches
                 lvl_avg = lvl_grind_df.groupby('Player Name')['Lvl Gain'].mean().reset_index().rename(columns={'Lvl Gain': 'Avg Lvl Gain'})
                 cv_avg = active_df.groupby('Player Name')['CV Gain'].mean().reset_index().rename(columns={'CV Gain': 'Avg CV Gain'})
                 dc_avg = active_df.groupby('Player Name')['DC Gain'].mean().reset_index().rename(columns={'DC Gain': 'Avg DC Gain'})
                 
-                # Re-merge the calculated branches cleanly back together
                 grind_df = lvl_avg.merge(cv_avg, on='Player Name', how='outer').merge(dc_avg, on='Player Name', how='outer').fillna(0)
                 
-                # Assign distinct leaderboard rankings based on clean averages
                 grind_df['L_Grind_Rank'] = grind_df['Avg Lvl Gain'].rank(ascending=False, method='min')
                 grind_df['C_Grind_Rank'] = grind_df['Avg CV Gain'].rank(ascending=False, method='min')
                 grind_df['D_Grind_Rank'] = grind_df['Avg DC Gain'].rank(ascending=False, method='min')
