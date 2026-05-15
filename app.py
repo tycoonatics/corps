@@ -66,7 +66,6 @@ def load_mapped_data():
         
         # Mapping dictionaries
         player_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Display_Name'].to_dict()
-        # Explicitly grabbing the Status column from your Reference_Data
         status_map = ref_df[ref_df['ID_Type'] == 'Player'].set_index('ID_Value')['Status'].to_dict()
         corp_map = ref_df[ref_df['ID_Type'] == 'Corp'].set_index('ID_Value')['Display_Name'].to_dict()
         
@@ -78,19 +77,17 @@ def load_mapped_data():
         stats_df['Date'] = pd.to_datetime(stats_df['Date'], format='mixed', dayfirst=False)
         stats_df['Player Name'] = stats_df['UID'].map(player_map).fillna(stats_df['UID'])
         stats_df['Corp Name'] = stats_df['Corp_ID'].map(corp_map).fillna(stats_df['Corp_ID'])
-        
-        # Apply Status from Reference sheet mapping
         stats_df['Status'] = stats_df['UID'].map(status_map).fillna("Inactive")
         
         for col in ['Lvl', 'CV', 'DC']:
             stats_df[col] = pd.to_numeric(stats_df[col], errors='coerce').fillna(0)
             
-        return stats_df, raw_stats_ws, player_map, corp_map
+        return stats_df, raw_stats_ws, player_map, status_map, corp_map
     except Exception as e:
         st.error(f"❌ Connection Failed: {e}")
-        return pd.DataFrame(), None, {}, {}
+        return pd.DataFrame(), None, {}, {}, {}
 
-df, stats_ws, player_map, corp_map = load_mapped_data()
+df, stats_ws, player_map, status_map, corp_map = load_mapped_data()
 
 # --- 4. APP DASHBOARD ---
 if not df.empty:
@@ -98,35 +95,31 @@ if not df.empty:
     available_corps = sorted(df['Corp Name'].unique())
     selected_corp_name = st.sidebar.selectbox("Active Corporation:", available_corps)
     
-    # Toggle to filter out "Inactive" players listed in your Sheet
-    show_active_only = st.sidebar.checkbox("Show Only 'Active' Members", value=True)
+    # FILTER: ONLY ACTIVE MEMBERS (Global logic for main tabs)
+    # This filters rows where column D of Reference sheet is 'Active'
+    active_df = df[df['Status'].astype(str).str.contains("Active", case=False, na=False)]
     
-    corp_df = df[df['Corp Name'] == selected_corp_name].sort_values('Date', ascending=False)
+    # Corp-specific data for the selected corporation
+    corp_df = active_df[active_df['Corp Name'] == selected_corp_name].sort_values('Date', ascending=False)
     
-    # Filter logic: keeps rows only where Status is 'Active'
-    if show_active_only:
-        view_df = corp_df[corp_df['Status'].astype(str).str.contains("Active", case=False, na=False)]
-    else:
-        view_df = corp_df
-
     latest_date = corp_df['Date'].max()
-    latest_df = view_df[view_df['Date'] == latest_date]
+    latest_df = corp_df[corp_df['Date'] == latest_date]
 
     tab_overview, tab_leaderboards, tab_streaks, tab_profiles, tab_admin = st.tabs([
         "🏠 Overview", "📊 Hall of Fame", "🔥 Streaks", "👤 Member Profiles", "🔑 Admin Entry"
     ])
 
-    # --- TAB 1: OVERVIEW ---
+    # --- TAB 1: OVERVIEW (Active Only) ---
     with tab_overview:
         st.markdown(f'<div class="section-header">📈 {selected_corp_name} Stats ({latest_date.date()})</div>', unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Roster", f"{len(latest_df)}")
+        m1.metric("Active Roster", f"{len(latest_df)}")
         m2.metric("Avg Level", f"{latest_df['Lvl'].mean():.1f}")
         m3.metric("Total Value", f"${latest_df['CV'].sum():,.0f}M")
         m4.metric("Total Donations", f"{latest_df['DC'].sum():,.0f}")
         
         st.dataframe(
-            latest_df[['Status', 'Player Name', 'Lvl', 'CV', 'DC']], 
+            latest_df[['Player Name', 'Lvl', 'CV', 'DC']], 
             column_config={
                 "Lvl": st.column_config.NumberColumn("Lvl", format="%d"),
                 "CV": st.column_config.NumberColumn("CV (M)", format="%d"),
@@ -136,55 +129,54 @@ if not df.empty:
             use_container_width=True
         )
 
-    # --- TAB 2: LEADERBOARDS ---
+    # --- TAB 2: LEADERBOARDS (Active Only) ---
     with tab_leaderboards:
-        st.markdown('<div class="section-header">👑 Hall of Fame (Filtered)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">👑 Hall of Fame (Active Members Only)</div>', unsafe_allow_html=True)
         h1, h2, h3 = st.columns(3)
         
-        # Grouping based on the filtered view_df
         h1.subheader("🏆 Peak Level")
-        h1.dataframe(view_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False).reset_index(), 
+        h1.dataframe(corp_df.groupby('Player Name')['Lvl'].max().sort_values(ascending=False).reset_index(), 
                      column_config={"Lvl": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
         
         h2.subheader("💰 Peak CV")
-        h2.dataframe(view_df.groupby('Player Name')['CV'].max().sort_values(ascending=False).reset_index(), 
+        h2.dataframe(corp_df.groupby('Player Name')['CV'].max().sort_values(ascending=False).reset_index(), 
                      column_config={"CV": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
         
         h3.subheader("💫 Lifetime DC")
-        h3.dataframe(view_df.groupby('Player Name')['DC'].sum().sort_values(ascending=False).reset_index(), 
+        h3.dataframe(corp_df.groupby('Player Name')['DC'].sum().sort_values(ascending=False).reset_index(), 
                      column_config={"DC": st.column_config.NumberColumn(format="%d")}, hide_index=True, use_container_width=True)
 
-    # --- TAB 3: STREAKS ---
+    # --- TAB 3: STREAKS (Active Only) ---
     with tab_streaks:
-        st.markdown('<div class="section-header">🔥 Active Engagement Streaks</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">🔥 Engagement Streaks (Active Members)</div>', unsafe_allow_html=True)
         streak_data = []
         distinct_weeks = sorted(corp_df['Date'].unique(), reverse=True)
         
-        # Calculate streaks for players currently in the view
-        for uid in view_df['UID'].unique():
+        for uid in corp_df['UID'].unique():
             p_logs = corp_df[corp_df['UID'] == uid]
             logged_dates = set(p_logs['Date'])
             count = 0
             for w in distinct_weeks:
                 if w in logged_dates: count += 1
                 else: break
-            streak_data.append({"Status": p_logs['Status'].iloc[0], "Player Name": p_logs['Player Name'].iloc[0], "Weeks Active": count})
+            streak_data.append({"Player Name": p_logs['Player Name'].iloc[0], "Weeks Active": count})
         
         st.dataframe(pd.DataFrame(streak_data).sort_values("Weeks Active", ascending=False), 
                      column_config={"Weeks Active": st.column_config.NumberColumn("Weeks Active", format="🔥 %d")},
                      hide_index=True, use_container_width=True)
 
-    # --- TAB 4: MEMBER PROFILES ---
+    # --- TAB 4: MEMBER PROFILES (Search All History) ---
     with tab_profiles:
-        st.markdown('<div class="section-header">👤 Individual Member Tracking</div>', unsafe_allow_html=True)
-        # Search includes everyone (active and inactive) for historical lookup
-        all_players = sorted(corp_df['Player Name'].unique())
-        sel_player = st.selectbox("Search Member Name:", all_players)
-        p_history = corp_df[corp_df['Player Name'] == sel_player].sort_values('Date')
+        st.markdown('<div class="section-header">👤 Historical Database Search</div>', unsafe_allow_html=True)
+        # In profiles, we show ALL players (including inactive) from the full df
+        full_corp_history = df[df['Corp Name'] == selected_corp_name]
+        all_players = sorted(full_corp_history['Player Name'].unique())
+        
+        sel_player = st.selectbox("Search Member (Active or Former):", all_players)
+        p_history = full_corp_history[full_corp_history['Player Name'] == sel_player].sort_values('Date')
         
         p_col1, p_col2 = st.columns([1, 2])
         p_col1.metric("Current Status", p_history['Status'].iloc[0])
-        # Manually formatting metrics to ensure commas appear
         p_col1.metric("Peak Lvl", f"{int(p_history['Lvl'].max()):,}")
         p_col1.metric("Lifetime DC", f"{int(p_history['DC'].sum()):,}")
         p_col2.plotly_chart(px.line(p_history, x='Date', y='CV', title='CV Progression', markers=True), use_container_width=True)
@@ -198,7 +190,9 @@ if not df.empty:
                 f1, f2 = st.columns(2)
                 in_date = f1.date_input("Date", date.today())
                 in_uid = f1.text_input("UID")
-                if in_uid in player_map: f1.info(f"Identified: **{player_map[in_uid]}**")
+                if in_uid in player_map: 
+                    f1.info(f"Verified: **{player_map[in_uid]}** ({status_map.get(in_uid, 'Unknown')})")
+                
                 in_cid = f2.text_input("Corp ID", value="CORP_001")
                 in_lvl = f2.number_input("Level", 1, 999, 100)
                 in_cv = f1.number_input("CV (Millions)", 0, 1000000, 1000)
@@ -206,9 +200,9 @@ if not df.empty:
                 
                 if st.form_submit_button("Submit Weekly Stats"):
                     stats_ws.append_row([str(in_date), in_cid, in_uid, int(in_lvl), int(in_cv), int(in_dc)])
-                    st.success("Data saved! Refreshing...")
+                    st.success("Data saved successfully!")
                     st.cache_data.clear()
                     st.rerun()
 
 else:
-    st.info("Hub ready. Ensure 'Reference_Data' has a 'Status' column in Column D.")
+    st.info("Hub ready. Please ensure your 'Reference_Data' has a 'Status' column in Column D.")
