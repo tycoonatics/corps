@@ -167,7 +167,6 @@ if not df.empty:
                 st.markdown('<div class="section-header">🏅 Weekly Performance Awards</div>', unsafe_allow_html=True)
                 a1, a2 = st.columns(2)
                 
-                # Render simulated winner data directly
                 rotw_w = week_data['RotW_Winner'].iloc[0]
                 rs_w = week_data['RS_Winner'].iloc[0]
                 
@@ -261,28 +260,35 @@ if not df.empty:
             m_hist = p_hist.groupby('Month_Key')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
 
             st.markdown('<div class="section-header">👤 Member Progression</div>', unsafe_allow_html=True)
-            st.plotly_chart(px.line(p_hist, x='Date', y='Lvl Gain', title="Weekly Level Gain History", markers=True), use_container_width=True)
+            
+            # Interactive Chart Dimension Control Switch
+            chart_dimension = st.radio("Select Domain Metric Visual:", ["Lvl Gain", "CV Gain", "DC Gain"], horizontal=True)
+            st.plotly_chart(px.line(p_hist, x='Date', y=chart_dimension, title=f"Weekly {chart_dimension} History", markers=True), use_container_width=True)
             
             # --- EXTENDED PERFORMANCE PROFILE ---
             c_records, c_awards, c_streaks = st.columns(3)
             
             with c_records:
                 st.subheader("🥇 Personal Bests")
-                # Weekly Bests
-                w_max_lvl = p_hist['Lvl Gain'].max()
-                w_max_cv = p_hist['CV Gain'].max()
-                w_max_dc = p_hist['DC Gain'].max()
-                # Monthly Bests
-                m_max_lvl = m_hist['Lvl Gain'].max() if not m_hist.empty else 0
-                m_max_cv = m_hist['CV Gain'].max() if not m_hist.empty else 0
-                m_max_dc = m_hist['DC Gain'].max() if not m_hist.empty else 0
+                
+                # Fetch Max Values & Corresponding Date Locations Safely
+                def get_best_with_date(df_source, target_col, time_col, is_month=False):
+                    if df_source.empty or df_source[target_col].max() == 0:
+                        return "N/A"
+                    idx = df_source[target_col].idxmax()
+                    val = df_source.loc[idx, target_col]
+                    t_val = df_source.loc[idx, time_col]
+                    t_str = t_val.strftime('%B %Y') if is_month else t_val.strftime('%Y-%m-%d')
+                    prefix = "+$" if "CV" in target_col else "+" if "Lvl" in target_col else ""
+                    suffix = "M" if "CV" in target_col else ""
+                    return f"{prefix}{int(val):,}{suffix} ({t_str})"
 
-                st.write(f"**Best Week (Lvl):** +{int(w_max_lvl)}")
-                st.write(f"**Best Month (Lvl):** +{int(m_max_lvl)}")
-                st.write(f"**Best Week (CV):** +${int(w_max_cv):,}M")
-                st.write(f"**Best Month (CV):** +${int(m_max_cv):,}M")
-                st.write(f"**Best Week (DC):** {int(w_max_dc):,}")
-                st.write(f"**Best Month (DC):** {int(m_max_dc):,}")
+                st.write(f"**Best Week (Lvl):** {get_best_with_date(p_hist, 'Lvl Gain', 'Date')}")
+                st.write(f"**Best Month (Lvl):** {get_best_with_date(m_hist, 'Lvl Gain', 'Month_Key', is_month=True)}")
+                st.write(f"**Best Week (CV):** {get_best_with_date(p_hist, 'CV Gain', 'Date')}")
+                st.write(f"**Best Month (CV):** {get_best_with_date(m_hist, 'CV Gain', 'Month_Key', is_month=True)}")
+                st.write(f"**Best Week (DC):** {get_best_with_date(p_hist, 'DC Gain', 'Date')}")
+                st.write(f"**Best Month (DC):** {get_best_with_date(m_hist, 'DC Gain', 'Month_Key', is_month=True)}")
 
             with c_awards:
                 st.subheader("👑 Career Award Wins")
@@ -294,7 +300,6 @@ if not df.empty:
 
             with c_streaks:
                 st.subheader("🔥 Longest Streaks")
-                # Ascending order lists for chronological execution
                 p_chron = p_hist.sort_values('Date', ascending=True)
                 st.write(f"⚡ **Lvl Top 3 Streak:** {get_longest_streak(p_chron['L3'].tolist())} Weeks")
                 st.write(f"⚡ **CV Top 3 Streak:** {get_longest_streak(p_chron['C3'].tolist())} Weeks")
