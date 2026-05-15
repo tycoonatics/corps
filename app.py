@@ -10,7 +10,7 @@ import plotly.express as px
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="RCTT Corporation Hub", page_icon="🏆", layout="wide")
 
-# --- 2. CSS STYLING (Dark Mode Friendly) ---
+# --- 2. CSS STYLING ---
 st.markdown("""
     <style>
     .main-header {
@@ -75,10 +75,11 @@ def load_mapped_data():
             stats_df[col] = pd.to_numeric(stats_df[col], errors='coerce').fillna(0)
             
         stats_df = stats_df.sort_values(['UID', 'Date'])
-        # Weekly activity (difference between this week and last week)
-        stats_df['Lvl Gain'] = stats_df.groupby('UID')['Lvl'].diff().fillna(0)
-        stats_df['CV Gain'] = stats_df.groupby('UID')['CV'].diff().fillna(0)
-        stats_df['DC Gain'] = stats_df.groupby('UID')['DC'].diff().fillna(0)
+
+        # FIX: Clip negative gains at 0 to prevent "crazy" graphs when members leave/rejoin
+        stats_df['Lvl Gain'] = stats_df.groupby('UID')['Lvl'].diff().fillna(0).clip(lower=0)
+        stats_df['CV Gain'] = stats_df.groupby('UID')['CV'].diff().fillna(0).clip(lower=0)
+        stats_df['DC Gain'] = stats_df.groupby('UID')['DC'].diff().fillna(0).clip(lower=0)
             
         return stats_df, raw_stats_ws, player_map, status_map, corp_map
     except Exception as e:
@@ -128,28 +129,18 @@ if not df.empty:
             w3.dataframe(format_table(week_data[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True, use_container_width=True)
 
         with tab_hof:
-            st.markdown('<div class="section-header">👑 Lifetime Achievement (Active Members)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">👑 Lifetime Growth (Active Members)</div>', unsafe_allow_html=True)
             h1, h2, h3 = st.columns(3)
             
-            # HOFS: Logic update - (Newest value - Oldest value)
-            hof_data = []
-            for uid in active_df['UID'].unique():
-                p_data = active_df[active_df['UID'] == uid].sort_values('Date')
-                if len(p_data) > 0:
-                    hof_data.append({
-                        "Player Name": p_data['Player Name'].iloc[0],
-                        "Lvl Growth": p_data['Lvl'].iloc[-1] - p_data['Lvl'].iloc[0],
-                        "CV Growth": p_data['CV'].iloc[-1] - p_data['CV'].iloc[0],
-                        "Total DC": p_data['DC'].iloc[-1] - p_data['DC'].iloc[0]
-                    })
-            hof_df = pd.DataFrame(hof_data)
+            # Summing gains is more resilient to rejoin gaps than (Last - First)
+            hof_df = active_df.groupby('Player Name')[['Lvl Gain', 'CV Gain', 'DC Gain']].sum().reset_index()
             
-            h1.subheader("🏆 Lvl Growth")
-            h1.dataframe(format_table(hof_df[['Player Name', 'Lvl Growth']].sort_values('Lvl Growth', ascending=False), ['Lvl Growth']), hide_index=True, use_container_width=True)
-            h2.subheader("💰 CV Growth")
-            h2.dataframe(format_table(hof_df[['Player Name', 'CV Growth']].sort_values('CV Growth', ascending=False), ['CV Growth']), hide_index=True, use_container_width=True)
-            h3.subheader("💫 Total DC")
-            h3.dataframe(format_table(hof_df[['Player Name', 'Total DC']].sort_values('Total DC', ascending=False), ['Total DC']), hide_index=True, use_container_width=True)
+            h1.subheader("🏆 Total Lvl Gain")
+            h1.dataframe(format_table(hof_df[['Player Name', 'Lvl Gain']].sort_values('Lvl Gain', ascending=False), ['Lvl Gain']), hide_index=True, use_container_width=True)
+            h2.subheader("💰 Total CV Gain")
+            h2.dataframe(format_table(hof_df[['Player Name', 'CV Gain']].sort_values('CV Gain', ascending=False), ['CV Gain']), hide_index=True, use_container_width=True)
+            h3.subheader("💫 Total DC Contribution")
+            h3.dataframe(format_table(hof_df[['Player Name', 'DC Gain']].sort_values('DC Gain', ascending=False), ['DC Gain']), hide_index=True, use_container_width=True)
 
         with tab_streaks:
             distinct_weeks = sorted(active_df['Date'].unique(), reverse=True)
@@ -173,21 +164,21 @@ if not df.empty:
             p_history = full_corp_history[full_corp_history['Player Name'] == sel_player].sort_values('Date')
             
             g1, g2, g3 = st.tabs(["📈 Weekly Lvl Gain", "💰 Weekly CV Gain", "💫 Weekly DC Gain"])
-            with g1: st.plotly_chart(px.line(p_history, x='Date', y='Lvl Gain', markers=True), use_container_width=True)
-            with g2: st.plotly_chart(px.line(p_history, x='Date', y='CV Gain', markers=True), use_container_width=True)
-            with g3: st.plotly_chart(px.line(p_history, x='Date', y='DC Gain', markers=True), use_container_width=True)
+            with g1: st.plotly_chart(px.line(p_history, x='Date', y='Lvl Gain', markers=True, title="Lvl Gain Activity"), use_container_width=True)
+            with g2: st.plotly_chart(px.line(p_history, x='Date', y='CV Gain', markers=True, title="CV Growth (M)"), use_container_width=True)
+            with g3: st.plotly_chart(px.line(p_history, x='Date', y='DC Gain', markers=True, title="Donation Activity"), use_container_width=True)
 
             st.write("---")
             m_col1, m_col2, m_col3, m_col4 = st.columns(4)
             
-            # Logic: (Latest - Earliest)
-            total_dc_earned = p_history['DC'].iloc[-1] - p_history['DC'].iloc[0]
-            total_lvl_gained = p_history['Lvl'].iloc[-1] - p_history['Lvl'].iloc[0]
+            # Using sum of gains to ignore the rejoin "reset"
+            total_dc = p_history['DC Gain'].sum()
+            total_lvl = p_history['Lvl Gain'].sum()
             
             m_col1.metric("Status", p_history['Status'].iloc[-1])
-            m_col2.metric("Total Lvl Gain", f"+{int(total_lvl_gained):,}")
+            m_col2.metric("Total Lvl Gain", f"+{int(total_lvl):,}")
             m_col3.metric("Avg Weekly DC", f"+{int(p_history['DC Gain'].mean()):,}")
-            m_col4.metric("Total DC Contribution", f"{int(total_dc_earned):,}")
+            m_col4.metric("Total DC Contribution", f"{int(total_dc):,}")
 
         with tab_admin:
             pwd = st.text_input("Password:", type="password")
